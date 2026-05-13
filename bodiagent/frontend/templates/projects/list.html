@@ -177,8 +177,8 @@ function renderProjectRow(project) {
       '<div class="ba-row-meta">' + escapeHtml(project.description || '无描述') + '</div></div></td>' +
     '<td>' + statusBadge(project.status) + '</td>' +
     '<td>' + priorityBadge(project.priority) + '</td>' +
-    '<td><div class="text-sm font-semibold text-gray-800">' + progressText(project) + '</div><div class="ba-row-meta">资源 ' + resourceCount(project) + ' · 占位</div></td>' +
-    '<td><div class="text-sm text-gray-700">' + leadText(project) + '</div></td>' +
+    '<td><div class="text-sm font-semibold text-gray-800">' + escapeHtml(progressText(project)) + '</div><div class="ba-row-meta">资源 ' + resourceCount(project) + ' · 占位</div></td>' +
+    '<td><div class="text-sm text-gray-700">' + escapeHtml(leadText(project)) + '</div></td>' +
     '<td>' + formatDate(project.created_at) + '</td>' +
     '<td><div class="ba-row-actions justify-end">' +
       '<button type="button" class="ba-button ba-button--ghost" onclick="openProjectForm(\'' + escapeJs(project.id) + '\')" data-ba-dialog-open>编辑</button>' +
@@ -226,6 +226,8 @@ function openProjectForm(projectId) {
   form.icon.value = 'folder';
   form.priority.value = 'none';
   form.status.value = 'planned';
+  form.status.disabled = true;
+  form.status.title = '创建后可编辑状态';
   form.lead_display.value = '';
   document.getElementById('project-form-error').classList.add('hidden');
   document.getElementById('project-dialog-title').textContent = '新建项目';
@@ -238,6 +240,8 @@ function openProjectForm(projectId) {
     form.icon.value = project.icon || 'folder';
     form.priority.value = project.priority || 'none';
     form.status.value = project.status || 'planned';
+    form.status.disabled = false;
+    form.status.title = '';
     form.lead_display.value = leadText(project);
     document.getElementById('project-dialog-title').textContent = '编辑项目';
     document.getElementById('project-submit-button').textContent = '保存';
@@ -268,9 +272,9 @@ async function submitProjectForm(event) {
       title: form.title.value.trim(),
       description: form.description.value.trim(),
       icon: form.icon.value.trim() || 'folder',
-      priority: form.priority.value,
-      status: form.status.value
+      priority: form.priority.value
     };
+    if (projectId) payload.status = form.status.value;
     await apiJson(projectId ? '/api/projects/' + projectId : '/api/projects', {
       method: projectId ? 'PUT' : 'POST',
       headers: projectHeaders(),
@@ -320,7 +324,7 @@ function priorityLabel(value) { return ({none:'无优先级', low:'低', medium:
 function priorityRank(value) { return ({none:0, low:1, medium:2, high:3, urgent:4})[value] || 0; }
 function statusBadge(value) { var badge = value === 'completed' ? 'ba-badge--success' : value === 'in_progress' ? 'ba-badge--info' : value === 'paused' ? 'ba-badge--warning' : value === 'cancelled' ? 'ba-badge--danger' : 'ba-badge--neutral'; return '<span class="ba-badge ' + badge + '">' + escapeHtml(statusLabel(value)) + '</span>'; }
 function priorityBadge(value) { var badge = value === 'urgent' ? 'ba-badge--danger' : value === 'high' ? 'ba-badge--warning' : value === 'medium' ? 'ba-badge--info' : 'ba-badge--neutral'; return '<span class="ba-badge ' + badge + '">' + escapeHtml(priorityLabel(value)) + '</span>'; }
-function progressText(project) { if (typeof project.progress === 'number') return project.progress + '%'; if (project.progress_label) return escapeHtml(project.progress_label); return '未接入'; }
+function progressText(project) { if (typeof project.progress === 'number') return project.progress + '%'; if (project.progress_label) return project.progress_label; return '未接入'; }
 function resourceCount(project) { return project.resource_count || project.resources_count || project.count || 0; }
 function leadText(project) { if (project.lead_name) return project.lead_name; if (project.lead_type && project.lead_id) return project.lead_type + ' · ' + project.lead_id; return '未指定'; }
 function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []); }
