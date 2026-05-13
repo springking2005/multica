@@ -1,6 +1,6 @@
-<header class="fixed top-0 left-0 right-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur"
+<header class="fixed top-0 left-0 right-0 z-30 border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur"
         x-data="{ userMenuOpen: false, notifOpen: false }">
-  <div class="flex h-14 items-center justify-between px-4 sm:px-6">
+  <div class="flex h-14 items-center justify-between px-3 sm:px-5">
     <!-- Left: hamburger + logo -->
     <div class="flex items-center gap-3">
       <button type="button"
@@ -23,7 +23,7 @@
       <div class="relative" @click.outside="notifOpen = false">
         <button type="button"
                 class="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                @click="notifOpen = !notifOpen"
+                @click="window.BodiAgentUI && window.BodiAgentUI.rememberFocus(); notifOpen = !notifOpen"
                 aria-label="通知">
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -46,7 +46,7 @@
       <div class="relative" @click.outside="userMenuOpen = false">
         <button type="button"
                 class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-sm font-medium text-blue-700 hover:bg-blue-200"
-                @click="userMenuOpen = !userMenuOpen"
+                @click="window.BodiAgentUI && window.BodiAgentUI.rememberFocus(); userMenuOpen = !userMenuOpen"
                 aria-label="用户菜单">
           {{ request.user.name|default:request.user.email|default:"U"|slice:":1"|upper }}
         </button>
