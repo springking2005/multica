@@ -58,3 +58,15 @@ server/server
 data/
 .kilo
 .idea
+
+# Python / Django local artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.sqlite3
+bodiagent/db.sqlite3
+bodiagent/staticfiles/
+bodiagent/*.egg-info/
+bodiagent/.omx/
+bodiagent/.omc/
+.omc/

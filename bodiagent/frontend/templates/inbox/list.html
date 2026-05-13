@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}收件箱 - 波笛智能体{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">收件箱</h1>
+      <p class="mt-1 text-sm text-gray-500">通知和动态更新</p>
+    </div>
+    <div class="flex gap-2">
+      <button class="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              hx-post="/api/inbox/mark-all-read/"
+              hx-target="#inbox-list"
+              hx-swap="outerHTML">
+        全部已读
+      </button>
+      <button class="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              hx-post="/api/inbox/archive-all-read/"
+              hx-target="#inbox-list"
+              hx-swap="outerHTML">
+        归档已读
+      </button>
+    </div>
+  </div>
+
+  <!-- Inbox List -->
+  <div id="inbox-list" class="space-y-3"
+       hx-get="/api/inbox/?limit=20"
+       hx-trigger="load"
+       hx-target="this"
+       hx-swap="innerHTML">
+    <div class="text-center py-12 text-sm text-gray-400">
+      加载中<span class="htmx-indicator">...</span>
+    </div>
+  </div>
+
+  <!-- Load More -->
+  <div class="mt-4 text-center"
+       hx-get="/api/inbox/?offset=20&limit=20"
+       hx-trigger="revealed"
+       hx-target="#inbox-list"
+       hx-swap="beforeend">
+    <div class="htmx-indicator text-sm text-gray-400 py-4">加载更多...</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.body.addEventListener('htmx:afterSettle', function(evt) {
+  var target = evt.detail.target;
+  if (target.id !== 'inbox-list' && !target.closest('#inbox-list')) return;
+
+  try {
+    var data = JSON.parse(evt.detail.xhr.responseText);
+    var items = data.items || data.results || data || [];
+    if (!Array.isArray(items)) items = [];
+
+    var html = '';
+    items.forEach(function(item) {
+      var isUnread = !item.read;
+      var bg = isUnread ? 'bg-blue-50' : 'bg-white';
+      var dot = isUnread ? '<span class="flex h-2 w-2 rounded-full bg-blue-500 shrink-0"></span>' : '<span class="flex h-2 w-2 rounded-full bg-gray-200 shrink-0"></span>';
+      var issueLink = item.issue_id ? '/issues/' + item.issue_id : '#';
+      var typeLabel = getTypeLabel(item.type);
+      var severityClass = item.severity === 'critical' ? 'text-red-600' : item.severity === 'warning' ? 'text-yellow-600' : 'text-blue-600';
+
+      html += '<a href="' + issueLink + '" class="flex items-start gap-3 rounded-lg border border-gray-200 ' + bg + ' p-4 shadow-sm hover:shadow-md transition-shadow" hx-boost="true"' +
+        (isUnread ? ' hx-post="/api/inbox/' + item.id + '/read/" hx-trigger="click once"' : '') + '>' +
+        dot +
+        '<div class="flex-1 min-w-0">' +
+          '<div class="flex items-center gap-2 mb-1">' +
+            '<span class="text-xs font-medium ' + severityClass + '">' + escapeHtml(typeLabel) + '</span>' +
+            '<span class="text-xs text-gray-400">' + formatDate(item.created_at) + '</span>' +
+          '</div>' +
+          '<p class="text-sm font-medium text-gray-900 truncate">' + escapeHtml(item.title || '') + '</p>' +
+          (item.body ? '<p class="mt-1 text-sm text-gray-500 line-clamp-2">' + escapeHtml(item.body) + '</p>' : '') +
+        '</div>' +
+      '</a>';
+    });
+
+    if (html === '') {
+      html = '<div class="text-center py-12 text-sm text-gray-400">收件箱为空</div>';
+    }
+
+    target.innerHTML = html;
+  } catch(e) {
+    target.innerHTML = '<div class="text-center py-12 text-sm text-gray-400">加载失败</div>';
+  }
+});
+
+function getTypeLabel(type) {
+  var map = {
+    'issue_assigned': '分配给我',
+    'unassigned': '取消分配',
+    'assignee_changed': '负责人变更',
+    'status_changed': '状态变更',
+    'priority_changed': '优先级变更',
+    'due_date_changed': '截止日期变更',
+    'new_comment': '新评论',
+    'mentioned': '提及了我',
+    'review_requested': '请求审查',
+    'task_completed': '任务完成',
+    'task_failed': '任务失败',
+    'agent_blocked': '智能体阻塞',
+    'agent_completed': '智能体完成',
+    'reaction_added': '新回应',
+    'quick_create_done': '快速创建完成',
+    'quick_create_failed': '快速创建失败'
+  };
+  return map[type] || type || '通知';
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  var now = new Date();
+  var diff = now - d;
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+  if (diff < 604800000) return Math.floor(diff / 86400000) + '天前';
+  return d.toLocaleDateString('zh-CN', {month:'short', day:'numeric'});
+}
+</script>
+{% endblock %}

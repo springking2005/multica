@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Issue 详情 - 波笛智能体{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <div class="flex flex-col lg:flex-row gap-6">
+    <!-- Main content -->
+    <div class="flex-1 min-w-0">
+      <!-- Issue header -->
+      <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6 mb-4"
+           hx-get="/api/issues/{{ issue_id }}/"
+           hx-trigger="load"
+           hx-target="this"
+           hx-swap="innerHTML">
+        <div class="animate-pulse space-y-3">
+          <div class="h-6 bg-gray-200 rounded w-3/4"></div>
+          <div class="h-4 bg-gray-200 rounded w-1/2"></div>
+        </div>
+      </div>
+
+      <!-- Comments -->
+      <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-5 py-4">
+          <h2 class="text-sm font-semibold text-gray-900">评论</h2>
+        </div>
+        <div class="divide-y divide-gray-100"
+             hx-get="/api/issues/{{ issue_id }}/comments/"
+             hx-trigger="load"
+             hx-target="this"
+             hx-swap="innerHTML">
+          <div class="px-5 py-4 text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+        </div>
+        <!-- Comment form -->
+        <div class="border-t border-gray-100 px-5 py-4">
+          <form hx-post="/api/issues/{{ issue_id }}/comments/"
+                hx-target="previous .divide-y"
+                hx-swap="beforeend"
+                hx-on::after-request="this.reset()">
+            {% csrf_token %}
+            <textarea name="content" rows="3" placeholder="添加评论... (支持 Markdown)"
+                      class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm resize-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+                      required></textarea>
+            <div class="mt-2 flex justify-end">
+              <button type="submit"
+                      class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                发表评论
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Activity Timeline -->
+      <div class="mt-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-5 py-4">
+          <h2 class="text-sm font-semibold text-gray-900">活动时间线</h2>
+        </div>
+        <div class="divide-y divide-gray-100 px-5 py-2"
+             hx-get="/api/activity/?issue_id={{ issue_id }}&limit=20"
+             hx-trigger="load"
+             hx-target="this"
+             hx-swap="innerHTML">
+          <div class="py-4 text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar: Properties -->
+    <div class="lg:w-72 shrink-0">
+      <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-5 space-y-4">
+        <h3 class="text-sm font-semibold text-gray-900">属性</h3>
+
+        <!-- Status -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">状态</label>
+          <select class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+                  hx-put="/api/issues/{{ issue_id }}/"
+                  hx-vals='js:{status: event.target.value}'
+                  name="status">
+            <option value="backlog">待规划</option>
+            <option value="todo">待处理</option>
+            <option value="in_progress">进行中</option>
+            <option value="in_review">审查中</option>
+            <option value="done">已完成</option>
+            <option value="blocked">阻塞</option>
+            <option value="cancelled">已取消</option>
+          </select>
+        </div>
+
+        <!-- Priority -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">优先级</label>
+          <select class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+                  hx-put="/api/issues/{{ issue_id }}/"
+                  hx-vals='js:{priority: event.target.value}'
+                  name="priority">
+            <option value="none">无</option>
+            <option value="urgent">紧急</option>
+            <option value="high">高</option>
+            <option value="medium">中</option>
+            <option value="low">低</option>
+          </select>
+        </div>
+
+        <!-- Assignee -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">负责人</label>
+          <select class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+                  hx-put="/api/issues/{{ issue_id }}/"
+                  hx-vals='js:{assignee_type: "member", assignee_id: event.target.value}'
+                  name="assignee_id">
+            <option value="">未分配</option>
+          </select>
+        </div>
+
+        <!-- Project -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">项目</label>
+          <select class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+                  hx-put="/api/issues/{{ issue_id }}/"
+                  hx-vals='js:{project_id: event.target.value}'
+                  name="project_id">
+            <option value="">无项目</option>
+          </select>
+        </div>
+
+        <!-- Due Date -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">截止日期</label>
+          <input type="date"
+                 class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+                 hx-put="/api/issues/{{ issue_id }}/"
+                 hx-vals='js:{due_date: event.target.value}'
+                 name="due_date">
+        </div>
+
+        <!-- Labels -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">标签</label>
+          <div class="flex flex-wrap gap-1" id="issue-labels"></div>
+        </div>
+
+        <!-- Meta -->
+        <div class="pt-4 border-t border-gray-100">
+          <p class="text-xs text-gray-400">
+            创建于 <span id="issue-created-at">--</span>
+          </p>
+          <p class="text-xs text-gray-400">
+            更新于 <span id="issue-updated-at">--</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

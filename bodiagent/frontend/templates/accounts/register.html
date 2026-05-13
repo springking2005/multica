@@ -1,0 +1,33 @@
+{% extends "base_guest.html" %}
+{% block title %}注册 - 波笛智能体{% endblock %}
+{% block content %}
+<div class="bg-white rounded-2xl shadow-xl p-8">
+    <h1 class="text-2xl font-bold text-center mb-2">注册</h1>
+    <p class="text-gray-500 text-center mb-8">创建你的波笛智能体账号</p>
+    <form id="register-form" method="post" action="/api/auth/register" hx-post="/api/auth/register" hx-target="#error" hx-swap="innerHTML" class="space-y-4">
+        {% csrf_token %}
+        <input type="text" name="name" placeholder="姓名" required class="w-full px-4 py-3 border rounded-lg">
+        <input type="email" name="email" placeholder="邮箱地址" required class="w-full px-4 py-3 border rounded-lg">
+        <input type="password" name="password" placeholder="密码" required class="w-full px-4 py-3 border rounded-lg">
+        <input type="password" name="password_confirm" placeholder="确认密码" required class="w-full px-4 py-3 border rounded-lg">
+        <div id="error" class="text-red-500 text-sm"></div>
+        <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700">注册</button>
+    </form>
+    <p class="text-center mt-4 text-sm text-gray-500">已有账号？<a href="/login" class="text-blue-600">登录</a></p>
+</div>
+<script>
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    if (evt.detail.elt.id !== 'register-form') return;
+    if (evt.detail.xhr.status === 201) {
+        try {
+            var data = JSON.parse(evt.detail.xhr.responseText);
+            if (data.token) {
+                localStorage.setItem('bodiagent_token', data.token);
+                localStorage.setItem('bodiagent_refresh', data.refresh);
+                window.location.href = '/dashboard/';
+            }
+        } catch(e) {}
+    }
+});
+</script>
+{% endblock %}

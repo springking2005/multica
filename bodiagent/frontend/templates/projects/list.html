@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}项目 - 波笛智能体{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto" id="project-page" data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">项目</h1>
+      <p class="mt-1 text-sm text-gray-500">管理工作区项目和优先级</p>
+    </div>
+    <button type="button" class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" onclick="openProjectForm()">
+      新建项目
+    </button>
+  </div>
+
+  <div id="project-alert" class="mb-4 hidden rounded-md border px-4 py-3 text-sm"></div>
+
+  <section class="rounded-lg border border-gray-200 bg-white shadow-sm mb-6">
+    <form id="project-form" class="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+      {% csrf_token %}
+      <input type="hidden" name="project_id">
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-gray-700 mb-1">项目名称</label>
+        <input name="title" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="例如：官网改版">
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+        <textarea name="description" rows="3" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="项目目标、范围或背景"></textarea>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">图标</label>
+        <input name="icon" value="folder" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">优先级</label>
+        <select name="priority" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <option value="none">无</option>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+          <option value="urgent">紧急</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">状态</label>
+        <select name="status" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <option value="planned">计划中</option>
+          <option value="in_progress">进行中</option>
+          <option value="paused">暂停</option>
+          <option value="completed">已完成</option>
+          <option value="cancelled">已取消</option>
+        </select>
+      </div>
+      <div class="flex items-end justify-end gap-2">
+        <button type="button" class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="openProjectForm()">清空</button>
+        <button type="submit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">保存</button>
+      </div>
+    </form>
+  </section>
+
+  <div id="project-list" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <div class="rounded-lg border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-500">加载中...</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var projectPage = document.getElementById('project-page');
+var projectWorkspaceId = projectPage ? projectPage.dataset.workspaceId : '';
+var projectCsrf = projectPage ? projectPage.dataset.csrf : '';
+var projectState = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('project-form').addEventListener('submit', submitProjectForm);
+  loadProjects();
+});
+
+function projectHeaders() {
+  return {'Content-Type': 'application/json', 'X-CSRFToken': projectCsrf, 'X-Workspace-ID': projectWorkspaceId};
+}
+
+async function loadProjects() {
+  if (!projectWorkspaceId) return renderProjectEmpty('当前用户还没有工作区，无法加载项目。');
+  try {
+    projectState = normalizeList(await apiJson('/api/projects', {headers: projectHeaders()}));
+    renderProjects();
+  } catch (error) {
+    renderProjectEmpty('加载失败：' + error.message);
+  }
+}
+
+function renderProjects() {
+  var list = document.getElementById('project-list');
+  if (!projectState.length) return renderProjectEmpty('暂无项目，填写上方表单创建第一个。');
+  list.innerHTML = projectState.map(function(project) {
+    return '<article class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">' +
+      '<div class="flex items-start justify-between gap-3">' +
+        '<div class="min-w-0"><h2 class="truncate text-base font-semibold text-gray-900">' + escapeHtml(project.title) + '</h2>' +
+        '<p class="mt-1 text-xs text-gray-500">' + escapeHtml(project.icon || 'folder') + ' / ' + statusLabel(project.status) + '</p></div>' +
+        '<span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">' + priorityLabel(project.priority) + '</span>' +
+      '</div>' +
+      '<p class="mt-3 min-h-[3rem] text-sm text-gray-600">' + escapeHtml(project.description || '无描述') + '</p>' +
+      '<div class="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">' +
+        '<button type="button" class="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50" onclick="openProjectForm(\'' + project.id + '\')">编辑</button>' +
+        '<button type="button" class="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50" onclick="deleteProject(\'' + project.id + '\')">删除</button>' +
+      '</div>' +
+    '</article>';
+  }).join('');
+}
+
+function renderProjectEmpty(message) {
+  document.getElementById('project-list').innerHTML =
+    '<div class="lg:col-span-2 rounded-lg border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-500">' + escapeHtml(message) + '</div>';
+}
+
+function openProjectForm(projectId) {
+  var form = document.getElementById('project-form');
+  form.reset();
+  form.project_id.value = '';
+  form.icon.value = 'folder';
+  form.priority.value = 'none';
+  form.status.value = 'planned';
+  var project = projectState.find(function(item) { return item.id === projectId; });
+  if (project) {
+    form.project_id.value = project.id;
+    form.title.value = project.title || '';
+    form.description.value = project.description || '';
+    form.icon.value = project.icon || 'folder';
+    form.priority.value = project.priority || 'none';
+    form.status.value = project.status || 'planned';
+  }
+  form.title.focus();
+}
+
+async function submitProjectForm(event) {
+  event.preventDefault();
+  var form = event.currentTarget;
+  var projectId = form.project_id.value;
+  var payload = {
+    title: form.title.value.trim(),
+    description: form.description.value.trim(),
+    icon: form.icon.value.trim() || 'folder',
+    priority: form.priority.value,
+    status: form.status.value
+  };
+  try {
+    await apiJson(projectId ? '/api/projects/' + projectId : '/api/projects', {
+      method: projectId ? 'PUT' : 'POST',
+      headers: projectHeaders(),
+      body: JSON.stringify(payload)
+    });
+    showProjectAlert(projectId ? '项目已更新。' : '项目已创建。', 'success');
+    openProjectForm();
+    await loadProjects();
+  } catch (error) {
+    showProjectAlert(error.message, 'error');
+  }
+}
+
+async function deleteProject(projectId) {
+  if (!confirm('确定删除这个项目吗？')) return;
+  try {
+    await apiJson('/api/projects/' + projectId, {method: 'DELETE', headers: projectHeaders()});
+    showProjectAlert('项目已删除。', 'success');
+    await loadProjects();
+  } catch (error) {
+    showProjectAlert(error.message, 'error');
+  }
+}
+
+function showProjectAlert(message, type) {
+  var alert = document.getElementById('project-alert');
+  alert.className = 'mb-4 rounded-md border px-4 py-3 text-sm ' +
+    (type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700');
+  alert.textContent = message;
+  alert.classList.remove('hidden');
+}
+
+function statusLabel(value) {
+  return ({planned:'计划中', in_progress:'进行中', paused:'暂停', completed:'已完成', cancelled:'已取消'})[value] || value || '计划中';
+}
+
+function priorityLabel(value) {
+  return ({none:'无优先级', low:'低', medium:'中', high:'高', urgent:'紧急'})[value] || value || '无优先级';
+}
+
+function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []); }
+function escapeHtml(str) { var div = document.createElement('div'); div.textContent = String(str == null ? '' : str); return div.innerHTML; }
+async function apiJson(url, options) { var response = await fetch(url, options || {}); var text = await response.text(); var data = text ? JSON.parse(text) : {}; if (!response.ok) throw new Error(formatApiError(data)); return data; }
+function formatApiError(data) { if (data.detail) return data.detail; return Object.keys(data || {}).map(function(key) { return key + ': ' + (Array.isArray(data[key]) ? data[key].join('，') : JSON.stringify(data[key])); }).join('；') || '请求失败'; }
+</script>
+{% endblock %}

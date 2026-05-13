@@ -1,0 +1,31 @@
+{% extends "base_guest.html" %}
+{% block title %}登录 - 波笛智能体{% endblock %}
+{% block content %}
+<div class="bg-white rounded-2xl shadow-xl p-8">
+    <h1 class="text-2xl font-bold text-center mb-2">登录</h1>
+    <p class="text-gray-500 text-center mb-8">欢迎回到波笛智能体</p>
+    <form id="login-form" method="post" action="/api/auth/login" hx-post="/api/auth/login" hx-target="#error" hx-swap="innerHTML" class="space-y-4">
+        {% csrf_token %}
+        <input type="email" name="email" placeholder="邮箱地址" required class="w-full px-4 py-3 border rounded-lg">
+        <input type="password" name="password" placeholder="密码" required class="w-full px-4 py-3 border rounded-lg">
+        <div id="error" class="text-red-500 text-sm"></div>
+        <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700">登录</button>
+    </form>
+    <p class="text-center mt-4 text-sm text-gray-500">还没有账号？<a href="/register" class="text-blue-600">注册</a></p>
+</div>
+<script>
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    if (evt.detail.elt.id !== 'login-form') return;
+    if (evt.detail.xhr.status === 200) {
+        try {
+            var data = JSON.parse(evt.detail.xhr.responseText);
+            if (data.token) {
+                localStorage.setItem('bodiagent_token', data.token);
+                localStorage.setItem('bodiagent_refresh', data.refresh);
+                window.location.href = '/dashboard/';
+            }
+        } catch(e) {}
+    }
+});
+</script>
+{% endblock %}

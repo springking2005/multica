@@ -1,0 +1,7 @@
+<!-- Mobile overlay backdrop -->
+<div class="fixed inset-0 z-30 bg-gray-900/25 md:hidden"
+     x-show="sidebarOpen"
+     x-transition.opacity.duration.200ms
+     @click="sidebarOpen = false"
+     aria-hidden="true"
+     x-cloak></div>

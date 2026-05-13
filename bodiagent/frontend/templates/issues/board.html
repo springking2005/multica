@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}看板 - 波笛智能体{% endblock %}
+
+{% block content %}
+<div class="max-w-full mx-auto">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Issue 看板</h1>
+      <p class="mt-1 text-sm text-gray-500">拖拽卡片以更改状态</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="/issues?quick_create=1"
+         class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        新建 Issue
+      </a>
+    </div>
+  </div>
+
+  <!-- Board -->
+  <div class="kanban-board">
+    <!-- Backlog -->
+    <div class="kanban-column">
+      <div class="kanban-column-header">
+        <div class="flex items-center gap-2">
+          <span class="flex h-2 w-2 rounded-full bg-gray-400"></span>
+          <h3 class="text-sm font-semibold text-gray-700">待规划</h3>
+          <span class="text-xs text-gray-400 kanban-count"></span>
+        </div>
+        <button class="kanban-add-btn" title="快速创建">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </button>
+      </div>
+      <div class="kanban-column-body"
+           hx-get="/api/issues/?status=backlog&limit=30&ordering=position"
+           hx-trigger="load"
+           hx-target="this"
+           hx-swap="innerHTML"
+           data-status="backlog">
+        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+      </div>
+    </div>
+
+    <!-- Todo -->
+    <div class="kanban-column">
+      <div class="kanban-column-header">
+        <div class="flex items-center gap-2">
+          <span class="flex h-2 w-2 rounded-full bg-blue-400"></span>
+          <h3 class="text-sm font-semibold text-gray-700">待处理</h3>
+          <span class="text-xs text-gray-400 kanban-count"></span>
+        </div>
+        <button class="kanban-add-btn" title="快速创建">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </button>
+      </div>
+      <div class="kanban-column-body"
+           hx-get="/api/issues/?status=todo&limit=30&ordering=position"
+           hx-trigger="load"
+           hx-target="this"
+           hx-swap="innerHTML"
+           data-status="todo">
+        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+      </div>
+    </div>
+
+    <!-- In Progress -->
+    <div class="kanban-column">
+      <div class="kanban-column-header">
+        <div class="flex items-center gap-2">
+          <span class="flex h-2 w-2 rounded-full bg-yellow-400"></span>
+          <h3 class="text-sm font-semibold text-gray-700">进行中</h3>
+          <span class="text-xs text-gray-400 kanban-count"></span>
+        </div>
+        <button class="kanban-add-btn" title="快速创建">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </button>
+      </div>
+      <div class="kanban-column-body"
+           hx-get="/api/issues/?status=in_progress&limit=30&ordering=position"
+           hx-trigger="load"
+           hx-target="this"
+           hx-swap="innerHTML"
+           data-status="in_progress">
+        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+      </div>
+    </div>
+
+    <!-- In Review -->
+    <div class="kanban-column">
+      <div class="kanban-column-header">
+        <div class="flex items-center gap-2">
+          <span class="flex h-2 w-2 rounded-full bg-purple-400"></span>
+          <h3 class="text-sm font-semibold text-gray-700">审查中</h3>
+          <span class="text-xs text-gray-400 kanban-count"></span>
+        </div>
+        <button class="kanban-add-btn" title="快速创建">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </button>
+      </div>
+      <div class="kanban-column-body"
+           hx-get="/api/issues/?status=in_review&limit=30&ordering=position"
+           hx-trigger="load"
+           hx-target="this"
+           hx-swap="innerHTML"
+           data-status="in_review">
+        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+      </div>
+    </div>
+
+    <!-- Done -->
+    <div class="kanban-column">
+      <div class="kanban-column-header">
+        <div class="flex items-center gap-2">
+          <span class="flex h-2 w-2 rounded-full bg-green-400"></span>
+          <h3 class="text-sm font-semibold text-gray-700">已完成</h3>
+          <span class="text-xs text-gray-400 kanban-count"></span>
+        </div>
+        <button class="kanban-add-btn" title="快速创建">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </button>
+      </div>
+      <div class="kanban-column-body"
+           hx-get="/api/issues/?status=done&limit=30&ordering=-updated_at"
+           hx-trigger="load"
+           hx-target="this"
+           hx-swap="innerHTML"
+           data-status="done">
+        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Parse API responses into cards
+document.body.addEventListener('htmx:afterSettle', function(evt) {
+  var target = evt.detail.target;
+  if (!target.classList.contains('kanban-column-body')) return;
+
+  try {
+    var data = JSON.parse(evt.detail.xhr.responseText);
+    var items = data.results || data || [];
+    if (!Array.isArray(items)) items = [];
+
+    var html = '';
+    items.forEach(function(issue) {
+      var priorityBadge = '';
+      var priorityColor = issue.priority === 'urgent' ? 'red' :
+                          issue.priority === 'high' ? 'orange' :
+                          issue.priority === 'medium' ? 'yellow' : 'green';
+      if (issue.priority && issue.priority !== 'none') {
+        priorityBadge = '<span class="priority-badge priority-' + issue.priority + '">' + issue.priority + '</span>';
+      }
+      html += '<a href="/issues/' + issue.id + '" class="issue-card" hx-boost="true">' +
+        '<div class="issue-card-header">' +
+          '<span class="issue-card-id">#' + (issue.number || '--') + '</span>' +
+          priorityBadge +
+        '</div>' +
+        '<p class="issue-card-title">' + escapeHtml(issue.title || '') + '</p>' +
+        '<div class="issue-card-footer">' +
+          '<span class="issue-card-assignee">' + (issue.assignee_type || '') + '</span>' +
+          '<span class="issue-card-date">' + formatDate(issue.updated_at) + '</span>' +
+        '</div>' +
+      '</a>';
+    });
+
+    if (html === '') {
+      html = '<div class="px-3 py-8 text-center text-sm text-gray-400">暂无 Issues</div>';
+    }
+
+    target.innerHTML = html;
+
+    // Update column count
+    var countEl = target.parentElement.querySelector('.kanban-count');
+    if (countEl) countEl.textContent = items.length;
+  } catch(e) {
+    target.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400">加载失败</div>';
+  }
+});
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  var now = new Date();
+  var diff = now - d;
+  if (diff < 86400000) return d.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleDateString('zh-CN', {month:'short',day:'numeric'});
+}
+</script>
+{% endblock %}

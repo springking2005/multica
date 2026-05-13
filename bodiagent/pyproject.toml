@@ -1,0 +1,60 @@
+[project]
+name = "bodiagent"
+version = "0.1.0"
+description = "波笛智能体 — 人机协作管理平台"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.1,<5.2",
+    "djangorestframework>=3.15",
+    "django-cors-headers>=4.4",
+    "django-storages>=1.14",
+    "djangorestframework-simplejwt>=5.3",
+    "channels>=4.1",
+    "daphne>=4.1",
+    "celery[redis]>=5.4",
+    "psycopg[binary]>=3.2",
+    "drf-spectacular>=0.28",
+    "httpx>=0.28",
+    "structlog>=24.4",
+    "sentry-sdk[django]>=2.19",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "django-extensions>=3.2",
+    "werkzeug>=3.1",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-asyncio>=0.25",
+    "pytest-xdist>=3.6",
+    "factory-boy>=3.3",
+    "playwright>=1.49",
+]
+
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+    "bodiagent",
+    "accounts", "issues", "agents", "inbox", "chat", "projects", "autopilots",
+    "daemon_cli",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+lint.select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["mypy_django_plugin"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "bodiagent.settings_dev"
+addopts = "-n auto --tb=short"

@@ -1,0 +1,36 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}波笛智能体{% endblock %}</title>
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8"></script>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-50 min-h-screen"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+      x-data="{ sidebarOpen: false }">
+    {% include "includes/navbar.html" %}
+    {% include "includes/sidebar_overlay.html" %}
+    <div class="flex pt-14">
+        {% include "includes/sidebar.html" %}
+        <main class="flex-1 p-4 sm:p-6 md:ml-64 min-h-[calc(100vh-3.5rem)]">
+            {% if messages %}
+            <div class="mb-4 space-y-2">
+                {% for message in messages %}
+                <div class="rounded-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    {% include "includes/footer.html" %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

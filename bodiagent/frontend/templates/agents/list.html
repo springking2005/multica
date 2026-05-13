@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% block title %}智能体 - 波笛智能体{% endblock %}
+
+{% block content %}
+<div id="agent-shell" x-data="{ createAgentOpen: false }">
+<div class="max-w-6xl mx-auto" id="agent-page" data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">智能体</h1>
+      <p class="mt-1 text-sm text-gray-500">管理工作区内的 AI 智能体</p>
+    </div>
+    <button type="button"
+            class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            @click="createAgentOpen = true"
+            onclick="openAgentForm()">
+      <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      创建智能体
+    </button>
+  </div>
+
+  <!-- Agent Grid -->
+  <div id="agent-alert" class="mb-4 hidden rounded-md border px-4 py-3 text-sm"></div>
+
+  <div id="agent-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="col-span-full text-center py-12 text-sm text-gray-400">
+      加载中<span class="htmx-indicator">...</span>
+    </div>
+  </div>
+</div>
+
+<!-- Create Agent Modal -->
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     x-show="createAgentOpen"
+     x-transition.opacity.duration.200ms
+     @click.self="createAgentOpen = false"
+     x-cloak>
+  <div class="fixed inset-0 bg-gray-900/25" aria-hidden="true"></div>
+  <div class="relative z-10 w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-xl"
+       x-transition.scale.duration.200ms>
+    <div class="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+      <h2 class="text-lg font-semibold text-gray-900">创建智能体</h2>
+      <button type="button" class="text-gray-400 hover:text-gray-600" @click="createAgentOpen = false">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <form id="agent-form" class="px-6 py-4 space-y-4">
+      {% csrf_token %}
+      <input type="hidden" name="agent_id" id="agent_id">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">名称</label>
+        <input type="text" name="name" required
+               class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+               placeholder="给智能体取个名字">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+        <input type="text" name="description"
+               class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+               placeholder="简短描述这个智能体的用途">
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Daemon</label>
+          <select name="daemon_id" id="agent_daemon_id"
+                  class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">
+            <option value="">请选择 Daemon</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">提供商</label>
+          <select name="provider" required
+                  class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">
+            <option value="claude">Claude</option>
+            <option value="codex">Codex</option>
+            <option value="gemini">Gemini</option>
+            <option value="copilot">Copilot</option>
+            <option value="openclaw">OpenClaw</option>
+            <option value="opencode">OpenCode</option>
+            <option value="hermes">Hermes</option>
+            <option value="pi">Pi</option>
+            <option value="cursor">Cursor</option>
+            <option value="kimi">Kimi</option>
+            <option value="kiro">Kiro</option>
+          </select>
+        </div>
+        <div class="col-span-2 sm:col-span-1">
+          <label class="block text-sm font-medium text-gray-700 mb-1">模型</label>
+          <input type="text" name="model"
+                 class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+                 placeholder="如 claude-sonnet-4-20250514">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">指令</label>
+        <textarea name="instructions" rows="3"
+                  class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+                  placeholder="系统指令（可选）"></textarea>
+      </div>
+      <details class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+        <summary class="cursor-pointer text-sm font-medium text-gray-700">高级配置</summary>
+        <div class="mt-3 grid grid-cols-1 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">最大并发任务</label>
+            <input type="number" name="max_concurrent_tasks" min="1" max="20" value="3"
+                   class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">环境变量 JSON</label>
+            <textarea name="custom_env" rows="2"
+                      class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">{}</textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">启动参数 JSON</label>
+            <textarea name="custom_args" rows="2"
+                      class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">{}</textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">MCP 配置 JSON</label>
+            <textarea name="mcp_config" rows="2"
+                      class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">{}</textarea>
+          </div>
+        </div>
+      </details>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                @click="createAgentOpen = false">取消</button>
+        <button type="submit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+          创建
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var agentState = { agents: [], daemons: [] };
+var agentPage = document.getElementById('agent-page');
+var agentWorkspaceId = agentPage ? agentPage.dataset.workspaceId : '';
+var agentCsrf = agentPage ? agentPage.dataset.csrf : '';
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadAgentDependencies();
+  document.getElementById('agent-form').addEventListener('submit', submitAgentForm);
+});
+
+function agentHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'X-CSRFToken': agentCsrf,
+    'X-Workspace-ID': agentWorkspaceId
+  };
+}
+
+function showAgentAlert(message, type) {
+  var alert = document.getElementById('agent-alert');
+  alert.className = 'mb-4 rounded-md border px-4 py-3 text-sm ' +
+    (type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700');
+  alert.textContent = message;
+  alert.classList.remove('hidden');
+}
+
+async function apiJson(url, options) {
+  var response = await fetch(url, options || {});
+  var text = await response.text();
+  var data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(formatApiError(data));
+  return data;
+}
+
+async function loadAgentDependencies() {
+  if (!agentWorkspaceId) {
+    renderAgentEmpty('当前用户还没有工作区，无法加载智能体。');
+    return;
+  }
+  try {
+    var results = await Promise.all([
+      apiJson('/api/agents', {headers: agentHeaders()}),
+      apiJson('/api/daemons/', {headers: {'X-CSRFToken': agentCsrf}})
+    ]);
+    agentState.agents = normalizeList(results[0]);
+    agentState.daemons = normalizeList(results[1]);
+    renderDaemonOptions();
+    renderAgents();
+  } catch (error) {
+    renderAgentEmpty('加载失败：' + error.message);
+  }
+}
+
+function renderDaemonOptions() {
+  var select = document.getElementById('agent_daemon_id');
+  select.innerHTML = '<option value="">请选择 Daemon</option>' + agentState.daemons.map(function(daemon) {
+    var label = daemon.device_name || daemon.machine_id || daemon.id;
+    return '<option value="' + escapeHtml(daemon.id) + '">' + escapeHtml(label) + '</option>';
+  }).join('');
+}
+
+function renderAgents() {
+  var target = document.getElementById('agent-grid');
+  if (!agentState.agents.length) {
+    renderAgentEmpty('暂无智能体，点击上方按钮创建第一个。');
+    return;
+  }
+  target.innerHTML = agentState.agents.map(function(agent) {
+    var statusBadge = agent.status === 'active'
+      ? '<span class="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">活跃</span>'
+      : '<span class="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">已归档</span>';
+    return '<article class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">' +
+      '<div class="flex items-start justify-between gap-3">' +
+        '<div class="min-w-0">' +
+          '<h3 class="truncate text-sm font-semibold text-gray-900">' + escapeHtml(agent.name || '未命名智能体') + '</h3>' +
+          '<p class="mt-1 truncate text-xs text-gray-500">' + escapeHtml(agent.provider || '') + (agent.model ? ' / ' + escapeHtml(agent.model) : '') + '</p>' +
+        '</div>' + statusBadge +
+      '</div>' +
+      '<p class="mt-3 min-h-[2.5rem] text-sm text-gray-600">' + escapeHtml(agent.description || '无描述') + '</p>' +
+      '<dl class="mt-4 grid grid-cols-2 gap-3 border-t border-gray-100 pt-4 text-xs text-gray-500">' +
+        '<div><dt>最大并发</dt><dd class="mt-1 font-medium text-gray-800">' + escapeHtml(agent.max_concurrent_tasks || 3) + '</dd></div>' +
+        '<div><dt>创建时间</dt><dd class="mt-1 font-medium text-gray-800">' + formatDate(agent.created_at) + '</dd></div>' +
+      '</dl>' +
+      '<div class="mt-4 flex flex-wrap justify-end gap-2">' +
+        '<button type="button" class="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50" onclick="openAgentForm(\'' + agent.id + '\')">编辑</button>' +
+        '<button type="button" class="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50" onclick="toggleAgentArchive(\'' + agent.id + '\')">' + (agent.status === 'active' ? '归档' : '恢复') + '</button>' +
+        '<button type="button" class="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50" onclick="deleteAgent(\'' + agent.id + '\')">删除</button>' +
+      '</div>' +
+    '</article>';
+  }).join('');
+}
+
+function renderAgentEmpty(message) {
+  document.getElementById('agent-grid').innerHTML =
+    '<div class="col-span-full rounded-lg border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-500">' + escapeHtml(message) + '</div>';
+}
+
+function openAgentForm(agentId) {
+  var form = document.getElementById('agent-form');
+  form.reset();
+  form.custom_env.value = '{}';
+  form.custom_args.value = '{}';
+  form.mcp_config.value = '{}';
+  document.getElementById('agent_id').value = '';
+  var agent = agentState.agents.find(function(item) { return item.id === agentId; });
+  if (agent) {
+    document.getElementById('agent_id').value = agent.id;
+    form.name.value = agent.name || '';
+    form.description.value = agent.description || '';
+    form.daemon_id.value = agent.daemon_id || '';
+    form.provider.value = agent.provider || 'claude';
+    form.model.value = agent.model || '';
+    form.instructions.value = agent.instructions || '';
+    form.max_concurrent_tasks.value = agent.max_concurrent_tasks || 3;
+    form.custom_env.value = JSON.stringify(agent.custom_env || {}, null, 2);
+    form.custom_args.value = JSON.stringify(agent.custom_args || {}, null, 2);
+    form.mcp_config.value = JSON.stringify(agent.mcp_config || {}, null, 2);
+  }
+  openAgentModal();
+}
+
+async function submitAgentForm(event) {
+  event.preventDefault();
+  var form = event.currentTarget;
+  var agentId = form.agent_id.value;
+  try {
+    if (!form.daemon_id.value) throw new Error('请选择 Daemon。');
+    var payload = {
+      name: form.name.value.trim(),
+      description: form.description.value.trim(),
+      daemon_id: form.daemon_id.value,
+      provider: form.provider.value,
+      model: form.model.value.trim(),
+      instructions: form.instructions.value.trim(),
+      max_concurrent_tasks: Number(form.max_concurrent_tasks.value || 3),
+      custom_env: parseJsonField(form.custom_env.value, '环境变量 JSON'),
+      custom_args: parseJsonField(form.custom_args.value, '启动参数 JSON'),
+      mcp_config: parseJsonField(form.mcp_config.value, 'MCP 配置 JSON')
+    };
+    await apiJson(agentId ? '/api/agents/' + agentId : '/api/agents', {
+      method: agentId ? 'PATCH' : 'POST',
+      headers: agentHeaders(),
+      body: JSON.stringify(payload)
+    });
+    showAgentAlert(agentId ? '智能体已更新。' : '智能体已创建。', 'success');
+    window.dispatchEvent(new CustomEvent('agent-modal-close'));
+    await loadAgentDependencies();
+  } catch (error) {
+    showAgentAlert(error.message, 'error');
+  }
+}
+
+async function toggleAgentArchive(agentId) {
+  var agent = agentState.agents.find(function(item) { return item.id === agentId; });
+  if (!agent) return;
+  var action = agent.status === 'active' ? 'archive' : 'restore';
+  try {
+    await apiJson('/api/agents/' + agentId + '/' + action + '/', {method: 'POST', headers: agentHeaders()});
+    await loadAgentDependencies();
+  } catch (error) {
+    showAgentAlert(error.message, 'error');
+  }
+}
+
+async function deleteAgent(agentId) {
+  if (!confirm('确定删除这个智能体吗？相关任务记录可能无法继续关联。')) return;
+  try {
+    await apiJson('/api/agents/' + agentId, {method: 'DELETE', headers: agentHeaders()});
+    showAgentAlert('智能体已删除。', 'success');
+    await loadAgentDependencies();
+  } catch (error) {
+    showAgentAlert(error.message, 'error');
+  }
+}
+
+window.addEventListener('agent-modal-close', function() {
+  var modal = document.querySelector('[x-show="createAgentOpen"]');
+  if (modal && window.Alpine) Alpine.$data(modal).createAgentOpen = false;
+});
+
+function openAgentModal() {
+  var shell = document.getElementById('agent-shell');
+  if (shell && window.Alpine) Alpine.$data(shell).createAgentOpen = true;
+}
+
+function normalizeList(data) {
+  return Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []);
+}
+
+function parseJsonField(value, label) {
+  try {
+    return value.trim() ? JSON.parse(value) : {};
+  } catch (error) {
+    throw new Error(label + ' 格式不正确。');
+  }
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = String(str == null ? '' : str);
+  return div.innerHTML;
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  return d.toLocaleDateString('zh-CN', {year:'numeric', month:'short', day:'numeric'});
+}
+
+function formatApiError(data) {
+  if (data.detail) return data.detail;
+  if (typeof data === 'string') return data;
+  return Object.keys(data || {}).map(function(key) {
+    var value = Array.isArray(data[key]) ? data[key].join('，') : JSON.stringify(data[key]);
+    return key + ': ' + value;
+  }).join('；') || '请求失败';
+}
+</script>
+{% endblock %}

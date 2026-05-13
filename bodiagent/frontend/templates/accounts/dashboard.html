@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}工作台 - 波笛智能体{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  <!-- Welcome & Quick Actions -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">你好, {{ request.user.name|default:request.user.email }}</h1>
+      <p class="mt-1 text-sm text-gray-500">欢迎回到波笛智能体</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="/issues?quick_create=1"
+         class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+         hx-boost="true">
+        <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        创建 Issue
+      </a>
+    </div>
+  </div>
+
+  <!-- Quick Stats -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4"
+       hx-get="/api/issues/?limit=1"
+       hx-trigger="load"
+       hx-swap="none">
+    <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <p class="text-sm font-medium text-gray-500">待处理 Issues</p>
+      <p class="mt-2 text-3xl font-bold text-gray-900"
+         id="stat-open" hx-get="/api/issues/?status=backlog,todo,in_progress,in_review&limit=1"
+         hx-trigger="load"
+         hx-swap="innerHTML">--</p>
+    </div>
+    <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <p class="text-sm font-medium text-gray-500">我的 Issues</p>
+      <p class="mt-2 text-3xl font-bold text-gray-900"
+         id="stat-mine" hx-get="/api/issues/?assignee_id={{ request.user.id }}&limit=1"
+         hx-trigger="load"
+         hx-swap="innerHTML">--</p>
+    </div>
+    <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <p class="text-sm font-medium text-gray-500">活跃智能体</p>
+      <p class="mt-2 text-3xl font-bold text-gray-900"
+         id="stat-agents" hx-get="/api/agents/?status=active&limit=1"
+         hx-trigger="load"
+         hx-swap="innerHTML">--</p>
+    </div>
+  </div>
+
+  <!-- Recent Activity -->
+  <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div class="border-b border-gray-100 px-5 py-4">
+      <h2 class="text-sm font-semibold text-gray-900">最近动态</h2>
+    </div>
+    <div class="divide-y divide-gray-100"
+         hx-get="/api/inbox/?limit=5"
+         hx-trigger="load"
+         hx-target="this"
+         hx-swap="innerHTML">
+      <div class="px-5 py-4 text-sm text-gray-400">
+        加载中<span class="htmx-indicator">...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Issues Quick View -->
+  <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+      <h2 class="text-sm font-semibold text-gray-900">我的 Issues</h2>
+      <a href="/issues?assignee_id={{ request.user.id }}" class="text-sm text-blue-600 hover:text-blue-700" hx-boost="true">查看全部</a>
+    </div>
+    <div class="divide-y divide-gray-100"
+         hx-get="/api/issues/?assignee_id={{ request.user.id }}&limit=5&status=backlog,todo,in_progress,in_review&ordering=-updated_at"
+         hx-trigger="load"
+         hx-target="this"
+         hx-swap="innerHTML">
+      <div class="px-5 py-3 text-sm text-gray-400">
+        加载中<span class="htmx-indicator">...</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.body.addEventListener('htmx:afterSettle', function(evt) {
+  if (evt.detail.target.id === 'stat-open') {
+    var data = JSON.parse(evt.detail.xhr.responseText);
+    document.getElementById('stat-open').textContent = data.count || '0';
+  }
+  if (evt.detail.target.id === 'stat-mine') {
+    var data = JSON.parse(evt.detail.xhr.responseText);
+    document.getElementById('stat-mine').textContent = data.count || '0';
+  }
+  if (evt.detail.target.id === 'stat-agents') {
+    var data = JSON.parse(evt.detail.xhr.responseText);
+    document.getElementById('stat-agents').textContent = data.count || '0';
+  }
+});
+</script>
+{% endblock %}

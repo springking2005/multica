@@ -1,0 +1,49 @@
+<!-- Sidebar -->
+<aside class="fixed top-14 bottom-0 left-0 z-40 w-64 border-r border-gray-200 bg-white md:translate-x-0"
+       :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+       x-transition:enter="transition-transform duration-300 ease-out"
+       x-transition:enter-start="-translate-x-full"
+       x-transition:enter-end="translate-x-0"
+       x-transition:leave="transition-transform duration-200 ease-in"
+       x-transition:leave-start="translate-x-0"
+       x-transition:leave-end="-translate-x-full"
+       x-cloak>
+  <div class="flex h-full flex-col px-3 py-4">
+    <!-- Workspace name -->
+    <div class="mb-4 px-2">
+      <p class="text-xs font-medium uppercase tracking-wide text-gray-400">当前工作区</p>
+      <p class="mt-1 text-sm font-semibold text-gray-900 truncate">
+        {% if request.workspace %}
+          {{ request.workspace.name }}
+        {% else %}
+          我的工作区
+        {% endif %}
+      </p>
+    </div>
+
+    <!-- Navigation items -->
+    <nav class="flex-1 space-y-1" aria-label="侧边栏导航">
+      <a href="/inbox" class="sidebar-link {% if request.path == '/inbox' %}bg-blue-100 text-blue-700{% endif %}" hx-boost="true">
+        <span class="mr-3 text-lg">📥</span> 收件箱
+      </a>
+      <a href="/my-issues" class="sidebar-link {% if request.path == '/my-issues' %}bg-blue-100 text-blue-700{% endif %}" hx-boost="true">
+        <span class="mr-3 text-lg">📋</span> 我的 Issues
+      </a>
+      <a href="/issues" class="sidebar-link {% if request.path == '/issues' %}bg-blue-100 text-blue-700{% endif %}" hx-boost="true">
+        <span class="mr-3 text-lg">📊</span> 看板
+      </a>
+      <a href="/projects" class="sidebar-link {% if request.path == '/projects' %}bg-blue-100 text-blue-700{% endif %}" hx-boost="true">
+        <span class="mr-3 text-lg">📁</span> 项目
+      </a>
+      <a href="/autopilots" class="sidebar-link {% if request.path == '/autopilots' %}bg-blue-100 text-blue-700{% endif %}" hx-boost="true">
+        <span class="mr-3 text-lg">⚡</span> 自动驾驶
+      </a>
+      <a href="/agents" class="sidebar-link {% if request.path == '/agents' %}bg-blue-100 text-blue-700{% endif %}" hx-boost="true">
+        <span class="mr-3 text-lg">🤖</span> 智能体
+      </a>
+      <a href="/settings" class="sidebar-link {% if request.path == '/settings' %}bg-blue-100 text-blue-700{% endif %}" hx-boost="true">
+        <span class="mr-3 text-lg">⚙️</span> 设置
+      </a>
+    </nav>
+  </div>
+</aside>
