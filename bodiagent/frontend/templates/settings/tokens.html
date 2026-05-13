@@ -2,40 +2,59 @@
 {% block title %}Token - 波笛智能体{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto" id="token-page" data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900">CLI Token</h1>
-      <p class="mt-1 text-sm text-gray-500">创建和撤销用于 daemon CLI 的访问 Token</p>
+<div class="ba-page-shell max-w-5xl mx-auto" id="token-page" data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <header class="ba-page-header">
+    <div class="ba-page-heading">
+      <p class="ba-page-eyebrow">Settings</p>
+      <h1 class="ba-page-title">CLI Token</h1>
+      <p class="ba-page-description">创建、复制一次性 Token，并撤销不再使用的 daemon CLI 访问凭证。</p>
     </div>
-  </div>
+    <div class="ba-page-actions">
+      <button type="button" id="token-refresh" class="ba-button ba-button--secondary">刷新</button>
+    </div>
+  </header>
 
-  <div id="token-alert" class="mb-4 hidden rounded-md border px-4 py-3 text-sm"></div>
+  <div id="token-alert" class="ba-alert ba-alert--info mb-4 hidden" role="status"></div>
 
   <section class="rounded-lg border border-gray-200 bg-white shadow-sm mb-6">
-    <div class="border-b border-gray-100 px-4 py-3">
-      <h2 class="text-sm font-semibold text-gray-900">创建 Token</h2>
+    <div class="border-b border-gray-100 px-5 py-4">
+      <h2 class="text-sm font-semibold text-gray-900">创建 CLI Token</h2>
+      <p class="mt-1 text-xs text-gray-500">Token 只会在创建后显示一次；请立即复制到本地 daemon CLI 配置。</p>
     </div>
-    <form id="token-form" class="grid grid-cols-1 gap-4 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
+    <form id="token-form" class="grid grid-cols-1 gap-4 p-5 md:grid-cols-[minmax(0,1fr)_14rem_auto] md:items-end" novalidate>
       {% csrf_token %}
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">名称</label>
-        <input name="name" value="CLI token" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+        <label for="token-name" class="block text-sm font-medium text-gray-700 mb-1">名称</label>
+        <input id="token-name" name="name" value="CLI token" required class="ba-input" placeholder="例如：MacBook daemon">
       </div>
-      <button type="submit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">生成 Token</button>
+      <div>
+        <label for="token-expires" class="block text-sm font-medium text-gray-700 mb-1">过期时间（可选）</label>
+        <input id="token-expires" name="expires_at" type="datetime-local" class="ba-input">
+      </div>
+      <button type="submit" id="token-submit" class="ba-button ba-button--primary">生成 Token</button>
     </form>
-    <div id="token-raw" class="hidden border-t border-yellow-100 bg-yellow-50 p-4">
-      <p class="text-sm font-medium text-yellow-900">请立即复制，离开页面后不会再次显示。</p>
-      <code class="mt-2 block overflow-x-auto rounded-md bg-white px-3 py-2 text-xs text-gray-900"></code>
+    <div id="token-raw" class="hidden border-t border-yellow-100 bg-yellow-50 p-5" role="status" aria-live="polite">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-semibold text-yellow-900">请立即复制，离开页面后不会再次显示。</p>
+          <p class="mt-1 text-xs text-yellow-800">如果复制失败，请手动复制下面完整 Token。列表中只会保存前缀。</p>
+          <code id="token-raw-code" class="mt-3 block overflow-x-auto rounded-md bg-white px-3 py-2 text-xs text-gray-900"></code>
+        </div>
+        <button type="button" id="token-copy" class="ba-button ba-button--secondary">复制 Token</button>
+      </div>
     </div>
   </section>
 
   <section class="rounded-lg border border-gray-200 bg-white shadow-sm">
-    <div class="border-b border-gray-100 px-4 py-3">
+    <div class="border-b border-gray-100 px-5 py-4">
       <h2 class="text-sm font-semibold text-gray-900">当前 Token</h2>
+      <p class="mt-1 text-xs text-gray-500">撤销会立即让使用该 Token 的 CLI 失去访问权限。</p>
     </div>
     <div id="token-list" class="divide-y divide-gray-100">
-      <div class="px-4 py-8 text-center text-sm text-gray-500">加载中...</div>
+      <div class="ba-empty-state m-5">
+        <div class="ba-empty-state-icon">🔑</div>
+        <div class="ba-empty-state-title">加载 Token...</div>
+      </div>
     </div>
   </section>
 </div>
@@ -43,92 +62,168 @@
 
 {% block scripts %}
 <script>
-var tokenPage = document.getElementById('token-page');
-var tokenCsrf = tokenPage ? tokenPage.dataset.csrf : '';
-var tokenState = [];
+(function() {
+  var root = document.getElementById('token-page');
+  if (!root) return;
 
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('token-form').addEventListener('submit', submitTokenForm);
-  loadTokens();
-});
+  var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var state = {tokens: [], rawToken: ''};
+  var els = {
+    alert: document.getElementById('token-alert'),
+    form: document.getElementById('token-form'),
+    submit: document.getElementById('token-submit'),
+    list: document.getElementById('token-list'),
+    raw: document.getElementById('token-raw'),
+    rawCode: document.getElementById('token-raw-code'),
+    copy: document.getElementById('token-copy'),
+    refresh: document.getElementById('token-refresh')
+  };
 
-function tokenHeaders() {
-  return {'Content-Type': 'application/json', 'X-CSRFToken': tokenCsrf};
-}
+  document.addEventListener('DOMContentLoaded', init);
 
-async function loadTokens() {
-  try {
-    tokenState = normalizeList(await apiJson('/api/tokens/', {headers: tokenHeaders()}));
-    renderTokens();
-  } catch (error) {
-    renderTokenEmpty('加载失败：' + error.message);
-  }
-}
-
-function renderTokens() {
-  var list = document.getElementById('token-list');
-  if (!tokenState.length) return renderTokenEmpty('暂无 Token。');
-  list.innerHTML = tokenState.map(function(token) {
-    return '<div class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">' +
-      '<div class="min-w-0">' +
-        '<p class="truncate text-sm font-medium text-gray-900">' + escapeHtml(token.name || 'Token') + '</p>' +
-        '<p class="mt-1 text-xs text-gray-500">前缀：' + escapeHtml(token.token_prefix || '-') + ' / 创建：' + formatDate(token.created_at) + '</p>' +
-      '</div>' +
-      '<button type="button" class="self-start rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50 sm:self-auto" onclick="deleteToken(\'' + token.id + '\')">撤销</button>' +
-    '</div>';
-  }).join('');
-}
-
-function renderTokenEmpty(message) {
-  document.getElementById('token-list').innerHTML = '<div class="px-4 py-8 text-center text-sm text-gray-500">' + escapeHtml(message) + '</div>';
-}
-
-async function submitTokenForm(event) {
-  event.preventDefault();
-  var form = event.currentTarget;
-  try {
-    var data = await apiJson('/api/tokens/cli-token/', {
-      method: 'POST',
-      headers: tokenHeaders(),
-      body: JSON.stringify({})
+  function init() {
+    els.form.addEventListener('submit', submitTokenForm);
+    els.refresh.addEventListener('click', loadTokens);
+    els.copy.addEventListener('click', copyRawToken);
+    els.list.addEventListener('click', function(event) {
+      var button = event.target.closest('[data-token-action="revoke"]');
+      if (button) revokeToken(button.dataset.tokenId);
     });
-    showRawToken(data.token || data.raw || '');
-    showTokenAlert('Token 已生成。', 'success');
-    await loadTokens();
-  } catch (error) {
-    showTokenAlert(error.message, 'error');
+    loadTokens();
   }
-}
 
-async function deleteToken(tokenId) {
-  if (!confirm('确定撤销这个 Token 吗？正在使用它的 CLI 将无法继续访问。')) return;
-  try {
-    await apiJson('/api/tokens/' + tokenId + '/', {method: 'DELETE', headers: tokenHeaders()});
-    showTokenAlert('Token 已撤销。', 'success');
-    await loadTokens();
-  } catch (error) {
-    showTokenAlert(error.message, 'error');
+  function headers() {
+    return {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken};
   }
-}
 
-function showRawToken(raw) {
-  var box = document.getElementById('token-raw');
-  box.querySelector('code').textContent = raw;
-  box.classList.remove('hidden');
-}
+  async function loadTokens() {
+    showAlert('正在刷新 Token...', 'info', true);
+    try {
+      state.tokens = normalizeList(await apiJson('/api/tokens/', {headers: headers()}));
+      renderTokens();
+      hideAlert();
+    } catch (error) {
+      renderTokenEmpty('加载失败：' + error.message);
+      showAlert(error.message, 'error');
+    }
+  }
 
-function showTokenAlert(message, type) {
-  var alert = document.getElementById('token-alert');
-  alert.className = 'mb-4 rounded-md border px-4 py-3 text-sm ' +
-    (type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700');
-  alert.textContent = message;
-  alert.classList.remove('hidden');
-}
+  function renderTokens() {
+    if (!state.tokens.length) return renderTokenEmpty('暂无 Token。创建一个 CLI Token 后，它会显示在这里。');
+    els.list.innerHTML = state.tokens.map(function(token) {
+      return '<div class="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="flex flex-wrap items-center gap-2">' +
+            '<p class="truncate text-sm font-semibold text-gray-900">' + escapeHtml(token.name || 'CLI token') + '</p>' +
+            '<span class="ba-badge ba-badge--neutral">' + escapeHtml(token.token_prefix || '-') + '</span>' +
+          '</div>' +
+          '<dl class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-500 sm:grid-cols-3">' +
+            '<div><dt class="font-medium text-gray-600">创建</dt><dd>' + formatDateTime(token.created_at) + '</dd></div>' +
+            '<div><dt class="font-medium text-gray-600">最近使用</dt><dd>' + formatDateTime(token.last_used_at) + '</dd></div>' +
+            '<div><dt class="font-medium text-gray-600">过期</dt><dd>' + formatDateTime(token.expires_at) + '</dd></div>' +
+          '</dl>' +
+        '</div>' +
+        '<button type="button" class="ba-button ba-button--danger-outline self-start lg:self-auto" data-token-action="revoke" data-token-id="' + escapeAttr(token.id) + '">撤销</button>' +
+      '</div>';
+    }).join('');
+  }
 
-function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []); }
-function escapeHtml(str) { var div = document.createElement('div'); div.textContent = String(str == null ? '' : str); return div.innerHTML; }
-function formatDate(iso) { if (!iso) return '-'; return new Date(iso).toLocaleDateString('zh-CN', {year:'numeric', month:'short', day:'numeric'}); }
-async function apiJson(url, options) { var response = await fetch(url, options || {}); var text = await response.text(); var data = text ? JSON.parse(text) : {}; if (!response.ok) throw new Error(formatApiError(data)); return data; }
-function formatApiError(data) { if (data.detail) return data.detail; return Object.keys(data || {}).map(function(key) { return key + ': ' + (Array.isArray(data[key]) ? data[key].join('，') : JSON.stringify(data[key])); }).join('；') || '请求失败'; }
+  function renderTokenEmpty(message) {
+    els.list.innerHTML = '<div class="ba-empty-state m-5">' +
+      '<div class="ba-empty-state-icon">🔑</div>' +
+      '<div class="ba-empty-state-title">' + escapeHtml(message) + '</div>' +
+      '<p class="ba-empty-state-body">Token 用于本地 daemon CLI 调用 BodiAgent API；原始值只显示一次。</p>' +
+      '</div>';
+  }
+
+  async function submitTokenForm(event) {
+    event.preventDefault();
+    var name = els.form.name.value.trim();
+    if (!name) return showAlert('请填写 Token 名称。', 'error');
+    var payload = {name: name};
+    if (els.form.expires_at.value) payload.expires_at = new Date(els.form.expires_at.value).toISOString();
+    setSubmitting(true);
+    try {
+      var data = await apiJson('/api/tokens/', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(payload)
+      });
+      showRawToken(data.raw || data.token || '');
+      showAlert('Token 已生成，请立即复制。', 'success');
+      els.form.reset();
+      els.form.name.value = 'CLI token';
+      await loadTokens();
+    } catch (error) {
+      showAlert(error.message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function revokeToken(tokenId) {
+    var token = state.tokens.find(function(item) { return String(item.id) === String(tokenId); });
+    var label = token ? token.name || token.token_prefix || token.id : tokenId;
+    if (!confirm('确定撤销 Token「' + label + '」吗？正在使用它的 CLI 将无法继续访问。')) return;
+    try {
+      await apiJson('/api/tokens/' + tokenId + '/', {method: 'DELETE', headers: headers()});
+      state.tokens = state.tokens.filter(function(item) { return String(item.id) !== String(tokenId); });
+      renderTokens();
+      showAlert('Token 已撤销。', 'success');
+    } catch (error) {
+      showAlert(error.message, 'error');
+    }
+  }
+
+  function showRawToken(raw) {
+    state.rawToken = raw;
+    els.rawCode.textContent = raw || '后端未返回原始 Token，请重新生成。';
+    els.raw.classList.remove('hidden');
+  }
+
+  async function copyRawToken() {
+    if (!state.rawToken) return showAlert('没有可复制的 Token。', 'error');
+    try {
+      await navigator.clipboard.writeText(state.rawToken);
+      showAlert('Token 已复制到剪贴板。', 'success');
+    } catch (error) {
+      showAlert('浏览器阻止自动复制，请手动复制 Token。', 'warning');
+    }
+  }
+
+  function setSubmitting(isSubmitting) {
+    els.submit.disabled = isSubmitting;
+    els.submit.textContent = isSubmitting ? '生成中...' : '生成 Token';
+  }
+
+  function showAlert(message, type, quiet) {
+    els.alert.className = 'ba-alert mb-4 ba-alert--' + (type || 'info');
+    els.alert.textContent = message;
+    els.alert.classList.remove('hidden');
+    if (!quiet && type === 'success') window.setTimeout(hideAlert, 3500);
+  }
+
+  function hideAlert() {
+    els.alert.classList.add('hidden');
+  }
+
+  function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []); }
+  function escapeHtml(str) { var div = document.createElement('div'); div.textContent = String(str == null ? '' : str); return div.innerHTML; }
+  function escapeAttr(str) { return escapeHtml(str).replace(/"/g, '&quot;'); }
+  function formatDateTime(iso) { if (!iso) return '-'; return new Date(iso).toLocaleString('zh-CN', {year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}); }
+  async function apiJson(url, options) {
+    var response = await fetch(url, options || {});
+    var text = await response.text();
+    var data = text ? JSON.parse(text) : {};
+    if (!response.ok) throw new Error(formatApiError(data));
+    return data;
+  }
+  function formatApiError(data) {
+    if (data.detail) return data.detail;
+    return Object.keys(data || {}).map(function(key) {
+      return key + ': ' + (Array.isArray(data[key]) ? data[key].join('，') : JSON.stringify(data[key]));
+    }).join('；') || '请求失败';
+  }
+})();
 </script>
 {% endblock %}
