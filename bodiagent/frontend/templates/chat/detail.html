@@ -2,52 +2,85 @@
 {% block title %}聊天 - 波笛智能体{% endblock %}
 
 {% block content %}
-<div class="mx-auto flex h-[calc(100vh-7rem)] max-w-6xl flex-col rounded-lg border border-gray-200 bg-white shadow-sm"
+<div class="mx-auto flex h-[calc(100vh-7rem)] max-w-7xl overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
      id="chat-app"
      data-session-id="{{ session_id }}"
-     data-workspace-id="{{ current_workspace_id }}">
-  <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-    <div class="min-w-0">
-      <h1 class="truncate text-xl font-semibold text-gray-900">智能体聊天</h1>
-      <p class="mt-1 text-sm text-gray-500" id="chat-status">正在准备聊天环境</p>
+     data-workspace-id="{{ current_workspace_id }}"
+     data-csrf="{{ csrf_token }}">
+  <aside class="hidden w-72 shrink-0 border-r border-gray-100 bg-gray-50 md:flex md:flex-col">
+    <div class="border-b border-gray-100 bg-white px-4 py-4">
+      <h2 class="text-sm font-semibold text-gray-900">对话</h2>
+      <p class="mt-1 text-xs text-gray-500">选择最近会话或创建新对话</p>
     </div>
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <select id="chat-agent-select"
-              class="min-w-0 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
-        <option value="">加载智能体...</option>
-      </select>
-      <button type="button"
-              id="chat-new-session"
-              class="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-        新对话
-      </button>
+    <div id="chat-session-rail" class="flex-1 space-y-2 overflow-y-auto p-3">
+      <div class="rounded-md border border-dashed border-gray-200 bg-white px-3 py-6 text-center text-sm text-gray-500">加载会话中...</div>
     </div>
-  </div>
+  </aside>
 
-  <div id="chat-messages"
-       class="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-4 py-4"
-       aria-live="polite">
-    <div class="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
-      选择智能体后开始对话
-    </div>
-  </div>
+  <section class="flex min-w-0 flex-1 flex-col">
+    <header class="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
+        <h1 class="truncate text-xl font-semibold text-gray-900">智能体聊天</h1>
+        <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+          <span id="chat-status-dot" class="h-2 w-2 rounded-full bg-gray-300" aria-hidden="true"></span>
+          <span id="chat-status">正在准备聊天环境</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 gap-2 sm:flex sm:items-center">
+        <select id="chat-session-select"
+                class="md:hidden min-w-0 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <option value="">加载会话...</option>
+        </select>
+        <select id="chat-agent-select"
+                class="min-w-0 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <option value="">加载智能体...</option>
+        </select>
+        <button type="button"
+                id="chat-new-session"
+                class="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+          新对话
+        </button>
+        <button type="button"
+                id="chat-reconnect"
+                class="rounded-md border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                disabled>
+          重连
+        </button>
+      </div>
+    </header>
 
-  <form id="chat-form" class="border-t border-gray-100 bg-white px-4 py-3">
-    {% csrf_token %}
-    <div class="flex flex-col gap-2 sm:flex-row">
-      <textarea id="chat-input"
-                rows="2"
-                class="min-h-16 flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                placeholder="输入消息..."
-                disabled></textarea>
-      <button type="submit"
-              id="chat-send"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-              disabled>
-        发送
-      </button>
+    <div id="chat-alert" class="hidden border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert"></div>
+
+    <div id="chat-messages"
+         class="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-4 py-4"
+         aria-live="polite">
+      <div class="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
+        选择智能体后开始对话
+      </div>
     </div>
-  </form>
+
+    <form id="chat-form" class="border-t border-gray-100 bg-white px-4 py-3">
+      {% csrf_token %}
+      <label for="chat-input" class="sr-only">输入消息</label>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <textarea id="chat-input"
+                  rows="2"
+                  class="min-h-16 flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                  placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+                  disabled></textarea>
+        <button type="submit"
+                id="chat-send"
+                class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                disabled>
+          发送
+        </button>
+      </div>
+      <div class="mt-2 flex flex-col gap-1 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+        <span id="chat-composer-help">需要选择智能体并连接实时通道后才能发送。</span>
+        <span id="chat-session-label">未选择会话</span>
+      </div>
+    </form>
+  </section>
 </div>
 {% endblock %}
 
@@ -59,200 +92,358 @@
 
   var workspaceId = root.dataset.workspaceId || '';
   var sessionId = root.dataset.sessionId || '';
+  var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
   var socket = null;
-  var agentSelect = document.getElementById('chat-agent-select');
-  var newSessionButton = document.getElementById('chat-new-session');
-  var statusEl = document.getElementById('chat-status');
-  var messagesEl = document.getElementById('chat-messages');
-  var form = document.getElementById('chat-form');
-  var input = document.getElementById('chat-input');
-  var sendButton = document.getElementById('chat-send');
-  var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  var reconnectTimer = null;
+  var state = { agents: [], sessions: [], messages: [], socketState: 'idle', manualClose: false };
 
-  function setStatus(text) {
-    statusEl.textContent = text;
+  var els = {
+    agentSelect: document.getElementById('chat-agent-select'),
+    sessionSelect: document.getElementById('chat-session-select'),
+    sessionRail: document.getElementById('chat-session-rail'),
+    newSession: document.getElementById('chat-new-session'),
+    reconnect: document.getElementById('chat-reconnect'),
+    status: document.getElementById('chat-status'),
+    statusDot: document.getElementById('chat-status-dot'),
+    alert: document.getElementById('chat-alert'),
+    messages: document.getElementById('chat-messages'),
+    form: document.getElementById('chat-form'),
+    input: document.getElementById('chat-input'),
+    send: document.getElementById('chat-send'),
+    help: document.getElementById('chat-composer-help'),
+    sessionLabel: document.getElementById('chat-session-label')
+  };
+
+  function headers(hasBody) {
+    var result = { 'Accept': 'application/json', 'X-CSRFToken': csrfToken };
+    if (workspaceId) result['X-Workspace-ID'] = workspaceId;
+    if (hasBody) result['Content-Type'] = 'application/json';
+    return result;
   }
 
-  function setComposerEnabled(enabled) {
-    input.disabled = !enabled;
-    sendButton.disabled = !enabled;
-  }
-
-  function clearMessages(text) {
-    messagesEl.textContent = '';
-    var empty = document.createElement('div');
-    empty.className = 'rounded-lg border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500';
-    empty.textContent = text;
-    messagesEl.appendChild(empty);
-  }
-
-  function appendMessage(message) {
-    var wrapper = document.createElement('div');
-    var isUser = message.role === 'user';
-    wrapper.className = 'flex ' + (isUser ? 'justify-end' : 'justify-start');
-
-    var bubble = document.createElement('div');
-    bubble.className = 'max-w-[85%] rounded-lg px-4 py-3 text-sm shadow-sm ' +
-      (isUser ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-800');
-
-    var role = document.createElement('div');
-    role.className = 'mb-1 text-xs font-medium ' + (isUser ? 'text-blue-100' : 'text-gray-400');
-    role.textContent = isUser ? '你' : '智能体';
-
-    var content = document.createElement('div');
-    content.className = 'whitespace-pre-wrap break-words';
-    content.textContent = message.content || '';
-
-    bubble.appendChild(role);
-    bubble.appendChild(content);
-    wrapper.appendChild(bubble);
-    messagesEl.appendChild(wrapper);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function apiFetch(url, options) {
-    var headers = {
-      'Accept': 'application/json',
-      'X-CSRFToken': csrfToken
-    };
-    if (workspaceId) headers['X-Workspace-ID'] = workspaceId;
-    if (options && options.body) headers['Content-Type'] = 'application/json';
-
-    return fetch(url, Object.assign({ credentials: 'same-origin', headers: headers }, options || {})).then(function(resp) {
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return resp.status === 204 ? null : resp.json();
-    });
+  async function apiJson(url, options) {
+    var opts = options || {};
+    opts.headers = Object.assign(headers(!!opts.body), opts.headers || {});
+    opts.credentials = 'same-origin';
+    var response = await fetch(url, opts);
+    var text = await response.text();
+    var data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error(formatApiError(data) || ('HTTP ' + response.status));
+    return data;
   }
 
   function normalizeList(data) {
     if (!data) return [];
     if (Array.isArray(data)) return data;
     if (Array.isArray(data.results)) return data.results;
+    if (Array.isArray(data.items)) return data.items;
     return [];
   }
 
+  function formatApiError(data) {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    if (data.detail) return data.detail;
+    return Object.keys(data).map(function(key) {
+      var value = Array.isArray(data[key]) ? data[key].join(', ') : data[key];
+      return key + ': ' + value;
+    }).join('; ');
+  }
+
+  function escapeHtml(value) {
+    var div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function selectedAgentId() {
+    var currentSession = state.sessions.find(function(item) { return item.id === sessionId; });
+    return currentSession ? currentSession.agent : els.agentSelect.value;
+  }
+
+  function setAlert(message) {
+    if (!message) {
+      els.alert.classList.add('hidden');
+      els.alert.textContent = '';
+      return;
+    }
+    els.alert.textContent = message;
+    els.alert.classList.remove('hidden');
+  }
+
+  function setSocketState(next, message) {
+    state.socketState = next;
+    var dotClass = 'bg-gray-300';
+    if (next === 'connecting') dotClass = 'bg-yellow-400';
+    if (next === 'connected') dotClass = 'bg-green-500';
+    if (next === 'disconnected') dotClass = 'bg-gray-400';
+    if (next === 'failed') dotClass = 'bg-red-500';
+    els.statusDot.className = 'h-2 w-2 rounded-full ' + dotClass;
+    els.status.textContent = message;
+    els.reconnect.disabled = !(sessionId && (next === 'disconnected' || next === 'failed'));
+    updateComposer();
+  }
+
+  function updateComposer() {
+    var connected = socket && socket.readyState === WebSocket.OPEN;
+    var canSend = !!sessionId && !!selectedAgentId() && connected;
+    els.input.disabled = !canSend;
+    els.send.disabled = !canSend || els.input.value.trim().length === 0;
+    els.help.textContent = canSend ? '实时通道已连接。Enter 发送，Shift+Enter 换行。' : '需要选择智能体并连接实时通道后才能发送。';
+    els.sessionLabel.textContent = sessionId ? '会话 ' + sessionId.slice(0, 8) : '未选择会话';
+  }
+
+  function clearMessages(text) {
+    els.messages.innerHTML = '<div class="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">' + escapeHtml(text) + '</div>';
+  }
+
+  function appendMessage(message, optimistic) {
+    var empty = els.messages.querySelector('.border-dashed');
+    if (empty) els.messages.textContent = '';
+
+    var role = message.role || 'assistant';
+    var isUser = role === 'user';
+    var isSystem = role === 'system';
+    var wrapper = document.createElement('div');
+    wrapper.className = 'flex ' + (isUser ? 'justify-end' : 'justify-start');
+
+    var bubble = document.createElement('div');
+    bubble.className = 'max-w-[85%] rounded-lg px-4 py-3 text-sm shadow-sm ' +
+      (isUser ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-800') +
+      (optimistic ? ' opacity-80' : '');
+
+    var meta = document.createElement('div');
+    meta.className = 'mb-1 flex items-center gap-2 text-xs font-medium ' + (isUser ? 'text-blue-100' : 'text-gray-400');
+    meta.textContent = isUser ? '你' : (isSystem ? '系统' : '智能体');
+    if (message.created_at) {
+      var time = document.createElement('span');
+      time.className = 'font-normal opacity-80';
+      time.textContent = formatDate(message.created_at);
+      meta.appendChild(time);
+    }
+
+    var content = document.createElement('div');
+    content.className = 'whitespace-pre-wrap break-words';
+    content.textContent = message.content || '';
+
+    bubble.appendChild(meta);
+    bubble.appendChild(content);
+    wrapper.appendChild(bubble);
+    els.messages.appendChild(wrapper);
+    els.messages.scrollTop = els.messages.scrollHeight;
+  }
+
+  function renderMessages() {
+    els.messages.textContent = '';
+    if (!state.messages.length) {
+      clearMessages(sessionId ? '暂无消息，发送第一条消息开始对话' : '选择智能体后开始对话');
+      return;
+    }
+    state.messages.forEach(function(message) { appendMessage(message, false); });
+  }
+
+  function renderAgents() {
+    if (!state.agents.length) {
+      els.agentSelect.innerHTML = '<option value="">暂无智能体</option>';
+      els.newSession.disabled = true;
+      return;
+    }
+    els.agentSelect.innerHTML = '<option value="">选择智能体</option>' + state.agents.map(function(agent) {
+      var label = agent.name || agent.provider || agent.id;
+      return '<option value="' + escapeHtml(agent.id) + '">' + escapeHtml(label) + '</option>';
+    }).join('');
+    els.newSession.disabled = false;
+  }
+
+  function renderSessions() {
+    if (!state.sessions.length) {
+      els.sessionRail.innerHTML = '<div class="rounded-md border border-dashed border-gray-200 bg-white px-3 py-6 text-center text-sm text-gray-500">暂无会话</div>';
+      els.sessionSelect.innerHTML = '<option value="">暂无会话</option>';
+      return;
+    }
+    els.sessionRail.innerHTML = state.sessions.map(function(session) {
+      var active = session.id === sessionId;
+      return '<button type="button" data-session-id="' + escapeHtml(session.id) + '" class="w-full rounded-md border px-3 py-3 text-left text-sm ' +
+        (active ? 'border-blue-200 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50') + '">' +
+          '<span class="block truncate font-medium">' + escapeHtml(session.title || '未命名对话') + '</span>' +
+          '<span class="mt-1 block truncate text-xs text-gray-500">' + escapeHtml(formatDate(session.updated_at || session.created_at)) + '</span>' +
+        '</button>';
+    }).join('');
+    els.sessionSelect.innerHTML = '<option value="">选择会话</option>' + state.sessions.map(function(session) {
+      return '<option value="' + escapeHtml(session.id) + '"' + (session.id === sessionId ? ' selected' : '') + '>' + escapeHtml(session.title || ('会话 ' + session.id.slice(0, 8))) + '</option>';
+    }).join('');
+  }
+
+  function closeSocket(manual) {
+    state.manualClose = !!manual;
+    if (reconnectTimer) {
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (socket) {
+      var old = socket;
+      socket = null;
+      old.close();
+    }
+  }
+
   function connectWebSocket() {
-    if (!sessionId) return;
-    if (socket) socket.close();
+    if (!sessionId) {
+      setSocketState('idle', '请选择或创建会话');
+      return;
+    }
+    closeSocket(true);
+    state.manualClose = false;
+    setSocketState('connecting', '正在连接实时通道');
+    setAlert('');
 
     var protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     socket = new WebSocket(protocol + '://' + window.location.host + '/ws/chat/' + sessionId + '/');
-    setStatus('正在连接实时通道');
-    setComposerEnabled(false);
 
     socket.onopen = function() {
-      setStatus('已连接');
-      setComposerEnabled(true);
+      setSocketState('connected', '已连接');
+      try { socket.send(JSON.stringify({ type: 'ping' })); } catch (err) {}
     };
     socket.onmessage = function(event) {
       try {
         var payload = JSON.parse(event.data);
         if (payload.type === 'pong') return;
-        appendMessage(payload);
+        if (payload.content || payload.role) {
+          state.messages.push(payload);
+          appendMessage(payload, false);
+        }
       } catch (err) {
-        setStatus('消息解析失败');
+        setSocketState('failed', '消息解析失败');
       }
     };
     socket.onclose = function() {
-      setComposerEnabled(false);
-      setStatus('实时通道已断开，请刷新页面重试');
+      socket = null;
+      if (state.manualClose) return;
+      setSocketState('disconnected', '实时通道已断开，可重连');
     };
     socket.onerror = function() {
-      setStatus('实时通道连接失败');
+      setSocketState('failed', '实时通道连接失败');
+      setAlert('WebSocket 连接失败，请确认会话可访问后重试。');
     };
   }
 
-  function loadMessages() {
+  async function loadAgents() {
+    var data = await apiJson('/api/agents');
+    state.agents = normalizeList(data);
+    renderAgents();
+  }
+
+  async function loadSessions() {
+    var data = await apiJson('/api/sessions/');
+    state.sessions = normalizeList(data);
+    renderSessions();
+  }
+
+  async function loadMessages() {
     if (!sessionId) {
-      clearMessages('选择智能体后开始对话');
-      return Promise.resolve();
+      state.messages = [];
+      renderMessages();
+      return;
     }
-    return apiFetch('/api/sessions/' + sessionId + '/messages/').then(function(data) {
-      var messages = normalizeList(data);
-      messagesEl.textContent = '';
-      if (messages.length === 0) {
-        clearMessages('暂无消息，发送第一条消息开始对话');
-        return;
-      }
-      messages.forEach(appendMessage);
-    }).catch(function() {
-      clearMessages('消息加载失败');
-    });
+    var data = await apiJson('/api/sessions/' + sessionId + '/messages/');
+    state.messages = normalizeList(data);
+    renderMessages();
   }
 
-  function createSession() {
-    var agentId = agentSelect.value;
+  async function openSession(nextSessionId, updateUrl) {
+    if (!nextSessionId) return;
+    closeSocket(true);
+    sessionId = nextSessionId;
+    root.dataset.sessionId = sessionId;
+    if (updateUrl !== false) window.history.replaceState({}, '', '/chat/' + sessionId + '/');
+    var session = state.sessions.find(function(item) { return item.id === sessionId; });
+    if (session && session.agent) els.agentSelect.value = session.agent;
+    renderSessions();
+    await loadMessages();
+    connectWebSocket();
+    updateComposer();
+  }
+
+  async function createSession() {
+    var agentId = els.agentSelect.value;
     if (!agentId) {
-      setStatus('请先选择智能体');
-      return Promise.resolve();
+      setAlert('请先选择智能体。');
+      return;
     }
-    setComposerEnabled(false);
-    setStatus('正在创建对话');
-    return apiFetch('/api/sessions/', {
-      method: 'POST',
-      body: JSON.stringify({
-        agent: agentId,
-        title: '新对话',
-        context: {}
-      })
-    }).then(function(session) {
-      sessionId = session.id;
-      root.dataset.sessionId = sessionId;
-      window.history.replaceState({}, '', '/chat/' + sessionId + '/');
-      clearMessages('暂无消息，发送第一条消息开始对话');
-      connectWebSocket();
-    }).catch(function() {
-      setStatus('创建对话失败');
-    });
-  }
-
-  function loadAgents() {
-    if (!workspaceId) {
-      agentSelect.innerHTML = '<option value="">没有可用工作区</option>';
-      setStatus('没有可用工作区');
-      return Promise.resolve();
-    }
-    return apiFetch('/api/agents/').then(function(data) {
-      var agents = normalizeList(data);
-      agentSelect.textContent = '';
-      if (agents.length === 0) {
-        agentSelect.innerHTML = '<option value="">暂无智能体</option>';
-        setStatus('暂无智能体，请先创建智能体');
-        return;
-      }
-      agents.forEach(function(agent) {
-        var option = document.createElement('option');
-        option.value = agent.id;
-        option.textContent = agent.name || agent.provider || agent.id;
-        agentSelect.appendChild(option);
+    els.newSession.disabled = true;
+    setSocketState('connecting', '正在创建对话');
+    try {
+      var agent = state.agents.find(function(item) { return item.id === agentId; });
+      var session = await apiJson('/api/sessions/', {
+        method: 'POST',
+        body: JSON.stringify({
+          agent: agentId,
+          title: agent ? ('与 ' + (agent.name || agent.provider || '智能体') + ' 的对话') : '新对话',
+          context: {}
+        })
       });
-      setStatus(sessionId ? '正在加载对话' : '请选择智能体开始新对话');
-    }).catch(function() {
-      agentSelect.innerHTML = '<option value="">智能体加载失败</option>';
-      setStatus('智能体加载失败');
-    });
+      state.sessions.unshift(session);
+      await openSession(session.id, true);
+    } catch (error) {
+      setAlert('创建对话失败：' + error.message);
+      setSocketState('failed', '创建对话失败');
+    } finally {
+      els.newSession.disabled = state.agents.length === 0;
+    }
   }
 
-  newSessionButton.addEventListener('click', function() {
-    sessionId = '';
-    root.dataset.sessionId = '';
-    window.history.replaceState({}, '', '/chat/');
-    if (socket) socket.close();
-    createSession();
+  els.newSession.addEventListener('click', createSession);
+  els.reconnect.addEventListener('click', connectWebSocket);
+  els.agentSelect.addEventListener('change', updateComposer);
+  els.input.addEventListener('input', updateComposer);
+  els.input.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      els.form.requestSubmit();
+    }
+  });
+  els.sessionSelect.addEventListener('change', function() {
+    if (els.sessionSelect.value) openSession(els.sessionSelect.value, true);
+  });
+  els.sessionRail.addEventListener('click', function(event) {
+    var button = event.target.closest('[data-session-id]');
+    if (button) openSession(button.dataset.sessionId, true);
   });
 
-  form.addEventListener('submit', function(event) {
+  els.form.addEventListener('submit', function(event) {
     event.preventDefault();
-    var text = input.value.trim();
+    var text = els.input.value.trim();
     if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
+    var message = { role: 'user', content: text, created_at: new Date().toISOString() };
+    state.messages.push(message);
+    appendMessage(message, true);
     socket.send(JSON.stringify({ type: 'message', content: text }));
-    input.value = '';
+    els.input.value = '';
+    updateComposer();
   });
 
-  loadAgents().then(function() {
-    return loadMessages();
-  }).then(function() {
-    if (sessionId) connectWebSocket();
+  if (!workspaceId) {
+    setAlert('当前用户没有可用工作区，无法使用聊天。');
+    setSocketState('failed', '没有可用工作区');
+    return;
+  }
+
+  Promise.all([loadAgents(), loadSessions()]).then(function() {
+    if (sessionId) {
+      return openSession(sessionId, false);
+    }
+    renderMessages();
+    setSocketState('idle', '请选择智能体并创建对话');
+  }).catch(function(error) {
+    setAlert('聊天加载失败：' + error.message);
+    setSocketState('failed', '聊天加载失败');
   });
 })();
 </script>

@@ -2,155 +2,499 @@
 {% block title %}Issue 详情 - 波笛智能体{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto">
-  <div class="flex flex-col lg:flex-row gap-6">
-    <!-- Main content -->
-    <div class="flex-1 min-w-0">
-      <!-- Issue header -->
-      <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6 mb-4"
-           hx-get="/api/issues/{{ issue_id }}/"
-           hx-trigger="load"
-           hx-target="this"
-           hx-swap="innerHTML">
-        <div class="animate-pulse space-y-3">
-          <div class="h-6 bg-gray-200 rounded w-3/4"></div>
-          <div class="h-4 bg-gray-200 rounded w-1/2"></div>
-        </div>
-      </div>
+<div id="issue-detail-app"
+     class="max-w-6xl mx-auto"
+     data-issue-id="{{ issue_id }}"
+     data-workspace-id="{{ current_workspace_id|default:'' }}"
+     data-csrf="{{ csrf_token }}">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <a href="/issues/" class="text-sm font-medium text-blue-600 hover:text-blue-700" hx-boost="true">← 返回 Issue 看板</a>
+      <h1 class="mt-2 text-2xl font-bold text-gray-900">Issue 详情</h1>
+      <p class="mt-1 text-sm text-gray-500">查看、编辑属性、评论和活动时间线</p>
+    </div>
+    <div id="issue-save-state" class="hidden rounded-md border px-3 py-2 text-sm" role="status"></div>
+  </div>
 
-      <!-- Comments -->
-      <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+  <div id="issue-alert" class="mb-4 hidden rounded-md border px-4 py-3 text-sm" role="alert"></div>
+
+  <div class="flex flex-col gap-6 lg:flex-row">
+    <main class="min-w-0 flex-1 space-y-4">
+      <section class="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-5 py-4">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0 flex-1">
+              <div class="mb-2 flex flex-wrap items-center gap-2">
+                <span id="issue-number" class="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">#--</span>
+                <span id="issue-status-badge" class="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">加载中</span>
+                <span id="issue-priority-badge" class="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">优先级</span>
+              </div>
+              <input id="issue-title-input"
+                     type="text"
+                     class="w-full rounded-md border border-transparent bg-transparent px-0 py-1 text-2xl font-semibold text-gray-900 focus:border-blue-300 focus:bg-white focus:px-3 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                     placeholder="Issue 标题"
+                     disabled>
+            </div>
+            <button type="button"
+                    id="issue-title-save"
+                    class="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    disabled>
+              保存标题
+            </button>
+          </div>
+        </div>
+        <div class="px-5 py-4">
+          <label for="issue-description-input" class="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-500">描述</label>
+          <textarea id="issue-description-input"
+                    rows="8"
+                    class="w-full resize-y rounded-lg border border-gray-200 px-4 py-3 text-sm leading-6 text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                    placeholder="暂无描述"
+                    disabled></textarea>
+          <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-xs text-gray-500">标题和描述通过 Issue PATCH API 保存，失败时保留当前输入。</p>
+            <button type="button"
+                    id="issue-description-save"
+                    class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    disabled>
+              保存描述
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-lg border border-gray-200 bg-white shadow-sm">
         <div class="border-b border-gray-100 px-5 py-4">
           <h2 class="text-sm font-semibold text-gray-900">评论</h2>
         </div>
-        <div class="divide-y divide-gray-100"
-             hx-get="/api/issues/{{ issue_id }}/comments/"
-             hx-trigger="load"
-             hx-target="this"
-             hx-swap="innerHTML">
-          <div class="px-5 py-4 text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+        <div id="comments-list" class="divide-y divide-gray-100">
+          <div class="px-5 py-4 text-sm text-gray-400">评论加载中...</div>
         </div>
-        <!-- Comment form -->
         <div class="border-t border-gray-100 px-5 py-4">
-          <form hx-post="/api/issues/{{ issue_id }}/comments/"
-                hx-target="previous .divide-y"
-                hx-swap="beforeend"
-                hx-on::after-request="this.reset()">
+          <form id="comment-form" novalidate>
             {% csrf_token %}
-            <textarea name="content" rows="3" placeholder="添加评论... (支持 Markdown)"
-                      class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm resize-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+            <label for="comment-content" class="sr-only">添加评论</label>
+            <textarea id="comment-content" name="content" rows="3" placeholder="添加评论... (支持 Markdown)"
+                      class="w-full resize-none rounded-lg border border-gray-200 px-4 py-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                       required></textarea>
-            <div class="mt-2 flex justify-end">
+            <div id="comment-error" class="mt-2 hidden text-sm text-red-600"></div>
+            <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p class="text-xs text-gray-500">空评论不能提交；提交失败时内容会保留。</p>
               <button type="submit"
-                      class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                      id="comment-submit"
+                      class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                      disabled>
                 发表评论
               </button>
             </div>
           </form>
         </div>
-      </div>
+      </section>
 
-      <!-- Activity Timeline -->
-      <div class="mt-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+      <section class="rounded-lg border border-gray-200 bg-white shadow-sm">
         <div class="border-b border-gray-100 px-5 py-4">
           <h2 class="text-sm font-semibold text-gray-900">活动时间线</h2>
         </div>
-        <div class="divide-y divide-gray-100 px-5 py-2"
-             hx-get="/api/activity/?issue_id={{ issue_id }}&limit=20"
-             hx-trigger="load"
-             hx-target="this"
-             hx-swap="innerHTML">
-          <div class="py-4 text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+        <div id="activity-list" class="divide-y divide-gray-100 px-5 py-2">
+          <div class="py-4 text-sm text-gray-400">活动加载中...</div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
 
-    <!-- Sidebar: Properties -->
-    <div class="lg:w-72 shrink-0">
-      <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-5 space-y-4">
+    <aside class="shrink-0 lg:w-80">
+      <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h3 class="text-sm font-semibold text-gray-900">属性</h3>
+        <div class="mt-4 space-y-4">
+          <div class="rounded-md border border-gray-100 px-3 py-3">
+            <label for="issue-status-select" class="block text-xs font-medium text-gray-500">状态</label>
+            <select id="issue-status-select" data-field="status" class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" disabled>
+              <option value="backlog">待规划</option>
+              <option value="todo">待处理</option>
+              <option value="in_progress">进行中</option>
+              <option value="in_review">审查中</option>
+              <option value="done">已完成</option>
+              <option value="blocked">阻塞</option>
+              <option value="cancelled">已取消</option>
+            </select>
+          </div>
 
-        <!-- Status -->
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">状态</label>
-          <select class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
-                  hx-put="/api/issues/{{ issue_id }}/"
-                  hx-vals='js:{status: event.target.value}'
-                  name="status">
-            <option value="backlog">待规划</option>
-            <option value="todo">待处理</option>
-            <option value="in_progress">进行中</option>
-            <option value="in_review">审查中</option>
-            <option value="done">已完成</option>
-            <option value="blocked">阻塞</option>
-            <option value="cancelled">已取消</option>
-          </select>
-        </div>
+          <div class="rounded-md border border-gray-100 px-3 py-3">
+            <label for="issue-priority-select" class="block text-xs font-medium text-gray-500">优先级</label>
+            <select id="issue-priority-select" data-field="priority" class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" disabled>
+              <option value="none">无</option>
+              <option value="urgent">紧急</option>
+              <option value="high">高</option>
+              <option value="medium">中</option>
+              <option value="low">低</option>
+            </select>
+          </div>
 
-        <!-- Priority -->
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">优先级</label>
-          <select class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
-                  hx-put="/api/issues/{{ issue_id }}/"
-                  hx-vals='js:{priority: event.target.value}'
-                  name="priority">
-            <option value="none">无</option>
-            <option value="urgent">紧急</option>
-            <option value="high">高</option>
-            <option value="medium">中</option>
-            <option value="low">低</option>
-          </select>
-        </div>
+          <div class="rounded-md border border-gray-100 px-3 py-3">
+            <label for="issue-assignee-id" class="block text-xs font-medium text-gray-500">负责人 ID</label>
+            <div class="mt-1 grid grid-cols-1 gap-2">
+              <select id="issue-assignee-type" class="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" disabled>
+                <option value="">未分配</option>
+                <option value="member">成员</option>
+                <option value="agent">智能体</option>
+              </select>
+              <input id="issue-assignee-id" type="text" class="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="UUID，可留空" disabled>
+              <button type="button" id="issue-assignee-save" class="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400" disabled>更新负责人</button>
+            </div>
+          </div>
 
-        <!-- Assignee -->
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">负责人</label>
-          <select class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
-                  hx-put="/api/issues/{{ issue_id }}/"
-                  hx-vals='js:{assignee_type: "member", assignee_id: event.target.value}'
-                  name="assignee_id">
-            <option value="">未分配</option>
-          </select>
-        </div>
+          <div class="rounded-md border border-gray-100 px-3 py-3">
+            <label for="issue-project-id" class="block text-xs font-medium text-gray-500">项目 ID</label>
+            <div class="mt-1 grid grid-cols-1 gap-2">
+              <input id="issue-project-id" type="text" class="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="UUID，可留空" disabled>
+              <button type="button" id="issue-project-save" class="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400" disabled>更新项目</button>
+            </div>
+          </div>
 
-        <!-- Project -->
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">项目</label>
-          <select class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
-                  hx-put="/api/issues/{{ issue_id }}/"
-                  hx-vals='js:{project_id: event.target.value}'
-                  name="project_id">
-            <option value="">无项目</option>
-          </select>
-        </div>
+          <div class="rounded-md border border-gray-100 px-3 py-3">
+            <label for="issue-due-date" class="block text-xs font-medium text-gray-500">截止日期</label>
+            <input id="issue-due-date" data-field="due_date" type="datetime-local" class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" disabled>
+          </div>
 
-        <!-- Due Date -->
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">截止日期</label>
-          <input type="date"
-                 class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
-                 hx-put="/api/issues/{{ issue_id }}/"
-                 hx-vals='js:{due_date: event.target.value}'
-                 name="due_date">
-        </div>
+          <div class="rounded-md border border-gray-100 px-3 py-3">
+            <label class="block text-xs font-medium text-gray-500">标签</label>
+            <div id="issue-labels" class="mt-2 flex flex-wrap gap-1">
+              <span class="text-sm text-gray-400">加载中...</span>
+            </div>
+            <p class="mt-2 text-xs text-gray-500">标签管理后端仅支持通过标签 ID 关联；此处先展示已有标签。</p>
+          </div>
 
-        <!-- Labels -->
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">标签</label>
-          <div class="flex flex-wrap gap-1" id="issue-labels"></div>
+          <div class="border-t border-gray-100 pt-4 text-xs text-gray-500">
+            <p>创建于 <span id="issue-created-at">--</span></p>
+            <p class="mt-1">更新于 <span id="issue-updated-at">--</span></p>
+          </div>
         </div>
-
-        <!-- Meta -->
-        <div class="pt-4 border-t border-gray-100">
-          <p class="text-xs text-gray-400">
-            创建于 <span id="issue-created-at">--</span>
-          </p>
-          <p class="text-xs text-gray-400">
-            更新于 <span id="issue-updated-at">--</span>
-          </p>
-        </div>
-      </div>
-    </div>
+      </section>
+    </aside>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var root = document.getElementById('issue-detail-app');
+  if (!root) return;
+
+  var issueId = root.dataset.issueId;
+  var workspaceId = root.dataset.workspaceId || '';
+  var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var state = { issue: null, comments: [], activities: [] };
+
+  var els = {
+    alert: document.getElementById('issue-alert'),
+    saveState: document.getElementById('issue-save-state'),
+    number: document.getElementById('issue-number'),
+    statusBadge: document.getElementById('issue-status-badge'),
+    priorityBadge: document.getElementById('issue-priority-badge'),
+    titleInput: document.getElementById('issue-title-input'),
+    titleSave: document.getElementById('issue-title-save'),
+    descriptionInput: document.getElementById('issue-description-input'),
+    descriptionSave: document.getElementById('issue-description-save'),
+    comments: document.getElementById('comments-list'),
+    commentForm: document.getElementById('comment-form'),
+    commentContent: document.getElementById('comment-content'),
+    commentSubmit: document.getElementById('comment-submit'),
+    commentError: document.getElementById('comment-error'),
+    activities: document.getElementById('activity-list'),
+    statusSelect: document.getElementById('issue-status-select'),
+    prioritySelect: document.getElementById('issue-priority-select'),
+    assigneeType: document.getElementById('issue-assignee-type'),
+    assigneeId: document.getElementById('issue-assignee-id'),
+    assigneeSave: document.getElementById('issue-assignee-save'),
+    projectId: document.getElementById('issue-project-id'),
+    projectSave: document.getElementById('issue-project-save'),
+    dueDate: document.getElementById('issue-due-date'),
+    labels: document.getElementById('issue-labels'),
+    createdAt: document.getElementById('issue-created-at'),
+    updatedAt: document.getElementById('issue-updated-at')
+  };
+
+  var statusLabels = {
+    backlog: '待规划', todo: '待处理', in_progress: '进行中', in_review: '审查中', done: '已完成', blocked: '阻塞', cancelled: '已取消'
+  };
+  var priorityLabels = { none: '无', urgent: '紧急', high: '高', medium: '中', low: '低' };
+
+  function headers(hasBody) {
+    var result = { 'Accept': 'application/json', 'X-CSRFToken': csrfToken };
+    if (workspaceId) result['X-Workspace-ID'] = workspaceId;
+    if (hasBody) result['Content-Type'] = 'application/json';
+    return result;
+  }
+
+  async function apiJson(url, options) {
+    var opts = options || {};
+    opts.headers = Object.assign(headers(!!opts.body), opts.headers || {});
+    opts.credentials = 'same-origin';
+    var response = await fetch(url, opts);
+    var text = await response.text();
+    var data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error(formatApiError(data) || ('HTTP ' + response.status));
+    return data;
+  }
+
+  function normalizeList(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.results)) return data.results;
+    if (Array.isArray(data.items)) return data.items;
+    return [];
+  }
+
+  function formatApiError(data) {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    if (data.detail) return data.detail;
+    return Object.keys(data).map(function(key) {
+      var value = Array.isArray(data[key]) ? data[key].join(', ') : data[key];
+      return key + ': ' + value;
+    }).join('; ');
+  }
+
+  function setAlert(message, type) {
+    if (!message) {
+      els.alert.classList.add('hidden');
+      return;
+    }
+    els.alert.className = 'mb-4 rounded-md border px-4 py-3 text-sm ' +
+      (type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700');
+    els.alert.textContent = message;
+  }
+
+  function setSaveState(message, type) {
+    if (!message) {
+      els.saveState.classList.add('hidden');
+      return;
+    }
+    els.saveState.className = 'rounded-md border px-3 py-2 text-sm ' +
+      (type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700');
+    els.saveState.textContent = message;
+    window.setTimeout(function() { setSaveState(''); }, 3000);
+  }
+
+  function escapeHtml(value) {
+    var div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+  }
+
+  function formatDate(value) {
+    if (!value) return '--';
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '--';
+    return date.toLocaleString('zh-CN', { hour12: false });
+  }
+
+  function toDatetimeLocal(value) {
+    if (!value) return '';
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    var offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  }
+
+  function fromDatetimeLocal(value) {
+    if (!value) return null;
+    var date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  function setControlsEnabled(enabled) {
+    [els.titleInput, els.descriptionInput, els.statusSelect, els.prioritySelect, els.assigneeType, els.assigneeId, els.assigneeSave, els.projectId, els.projectSave, els.dueDate].forEach(function(el) {
+      if (el) el.disabled = !enabled;
+    });
+    updateDirtyButtons();
+  }
+
+  function updateDirtyButtons() {
+    if (!state.issue) {
+      els.titleSave.disabled = true;
+      els.descriptionSave.disabled = true;
+      return;
+    }
+    els.titleSave.disabled = els.titleInput.value.trim() === (state.issue.title || '').trim();
+    els.descriptionSave.disabled = els.descriptionInput.value === (state.issue.description || '');
+  }
+
+  function renderIssue(issue) {
+    state.issue = issue;
+    els.number.textContent = '#' + (issue.number || '--');
+    els.statusBadge.textContent = statusLabels[issue.status] || issue.status || '未知';
+    els.priorityBadge.textContent = '优先级：' + (priorityLabels[issue.priority] || issue.priority || '无');
+    els.titleInput.value = issue.title || '';
+    els.descriptionInput.value = issue.description || '';
+    els.statusSelect.value = issue.status || 'backlog';
+    els.prioritySelect.value = issue.priority || 'none';
+    els.assigneeType.value = issue.assignee_type || '';
+    els.assigneeId.value = issue.assignee_id || '';
+    els.projectId.value = issue.project || '';
+    els.dueDate.value = toDatetimeLocal(issue.due_date);
+    els.createdAt.textContent = formatDate(issue.created_at);
+    els.updatedAt.textContent = formatDate(issue.updated_at);
+    renderLabels(issue.labels || []);
+    setControlsEnabled(true);
+  }
+
+  function renderLabels(labels) {
+    if (!labels.length) {
+      els.labels.innerHTML = '<span class="text-sm text-gray-400">暂无标签</span>';
+      return;
+    }
+    els.labels.innerHTML = labels.map(function(mapping) {
+      var label = mapping.label || mapping;
+      var color = label.color || '#6B7280';
+      return '<span class="rounded-full px-2 py-1 text-xs font-medium text-white" style="background-color:' + escapeHtml(color) + '">' + escapeHtml(label.name || '标签') + '</span>';
+    }).join('');
+  }
+
+  function renderComments() {
+    if (!state.comments.length) {
+      els.comments.innerHTML = '<div class="px-5 py-8 text-center text-sm text-gray-400">暂无评论</div>';
+      return;
+    }
+    els.comments.innerHTML = state.comments.map(function(comment) {
+      var author = (comment.author_type || 'member') + (comment.author_id ? ' · ' + String(comment.author_id).slice(0, 8) : '');
+      return '<article class="px-5 py-4">' +
+        '<div class="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">' +
+          '<span>' + escapeHtml(author) + '</span>' +
+          '<time datetime="' + escapeHtml(comment.created_at || '') + '">' + escapeHtml(formatDate(comment.created_at)) + '</time>' +
+        '</div>' +
+        '<div class="whitespace-pre-wrap break-words text-sm leading-6 text-gray-800">' + escapeHtml(comment.content || '') + '</div>' +
+      '</article>';
+    }).join('');
+  }
+
+  function renderActivities() {
+    if (!state.activities.length) {
+      els.activities.innerHTML = '<div class="py-4 text-center text-sm text-gray-400">暂无活动</div>';
+      return;
+    }
+    els.activities.innerHTML = state.activities.map(function(activity) {
+      var actor = (activity.actor_type || 'system') + (activity.actor_id ? ' · ' + String(activity.actor_id).slice(0, 8) : '');
+      var details = activity.details && Object.keys(activity.details).length ? JSON.stringify(activity.details) : '';
+      return '<article class="py-4">' +
+        '<div class="flex gap-3">' +
+          '<div class="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500"></div>' +
+          '<div class="min-w-0 flex-1">' +
+            '<div class="flex flex-wrap items-center justify-between gap-2 text-sm">' +
+              '<span class="font-medium text-gray-800">' + escapeHtml(activity.action || 'activity') + '</span>' +
+              '<time class="text-xs text-gray-500" datetime="' + escapeHtml(activity.created_at || '') + '">' + escapeHtml(formatDate(activity.created_at)) + '</time>' +
+            '</div>' +
+            '<p class="mt-1 text-xs text-gray-500">' + escapeHtml(actor) + '</p>' +
+            (details ? '<pre class="mt-2 overflow-x-auto rounded bg-gray-50 p-2 text-xs text-gray-600">' + escapeHtml(details) + '</pre>' : '') +
+          '</div>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+  }
+
+  async function loadIssue() {
+    var issue = await apiJson('/api/issues/' + issueId);
+    renderIssue(issue);
+  }
+
+  async function loadComments() {
+    var data = await apiJson('/api/issues/' + issueId + '/comments');
+    state.comments = normalizeList(data);
+    renderComments();
+  }
+
+  async function loadActivities() {
+    try {
+      var data = await apiJson('/api/activities?issue_id=' + encodeURIComponent(issueId) + '&limit=20');
+      state.activities = normalizeList(data);
+      renderActivities();
+    } catch (error) {
+      els.activities.innerHTML = '<div class="py-4 text-sm text-red-600">活动加载失败：' + escapeHtml(error.message) + '</div>';
+    }
+  }
+
+  async function patchIssue(payload) {
+    setSaveState('正在保存...', 'success');
+    var issue = await apiJson('/api/issues/' + issueId, { method: 'PATCH', body: JSON.stringify(payload) });
+    renderIssue(issue);
+    setSaveState('已保存', 'success');
+    loadActivities();
+  }
+
+  els.titleInput.addEventListener('input', updateDirtyButtons);
+  els.descriptionInput.addEventListener('input', updateDirtyButtons);
+
+  els.titleSave.addEventListener('click', function() {
+    var title = els.titleInput.value.trim();
+    if (!title) {
+      setSaveState('标题不能为空', 'error');
+      return;
+    }
+    patchIssue({ title: title }).catch(function(error) { setSaveState('保存失败：' + error.message, 'error'); });
+  });
+
+  els.descriptionSave.addEventListener('click', function() {
+    patchIssue({ description: els.descriptionInput.value }).catch(function(error) { setSaveState('保存失败：' + error.message, 'error'); });
+  });
+
+  els.statusSelect.addEventListener('change', function() {
+    patchIssue({ status: els.statusSelect.value }).catch(function(error) { setSaveState('状态更新失败：' + error.message, 'error'); renderIssue(state.issue); });
+  });
+
+  els.prioritySelect.addEventListener('change', function() {
+    patchIssue({ priority: els.prioritySelect.value }).catch(function(error) { setSaveState('优先级更新失败：' + error.message, 'error'); renderIssue(state.issue); });
+  });
+
+  els.dueDate.addEventListener('change', function() {
+    patchIssue({ due_date: fromDatetimeLocal(els.dueDate.value) }).catch(function(error) { setSaveState('截止日期更新失败：' + error.message, 'error'); renderIssue(state.issue); });
+  });
+
+  els.assigneeSave.addEventListener('click', function() {
+    var assigneeId = els.assigneeId.value.trim();
+    var assigneeType = els.assigneeType.value;
+    var payload = assigneeId ? { assignee_type: assigneeType || 'member', assignee_id: assigneeId } : { assignee_type: null, assignee_id: null };
+    patchIssue(payload).catch(function(error) { setSaveState('负责人更新失败：' + error.message, 'error'); });
+  });
+
+  els.projectSave.addEventListener('click', function() {
+    var projectId = els.projectId.value.trim();
+    patchIssue({ project: projectId || null }).catch(function(error) { setSaveState('项目更新失败：' + error.message, 'error'); });
+  });
+
+  els.commentContent.addEventListener('input', function() {
+    els.commentSubmit.disabled = els.commentContent.value.trim().length === 0;
+    els.commentError.classList.add('hidden');
+  });
+
+  els.commentForm.addEventListener('submit', async function(event) {
+    event.preventDefault();
+    var content = els.commentContent.value.trim();
+    if (!content) return;
+    els.commentSubmit.disabled = true;
+    els.commentError.classList.add('hidden');
+    try {
+      var comment = await apiJson('/api/issues/' + issueId + '/comments', { method: 'POST', body: JSON.stringify({ content: content }) });
+      state.comments.push(comment);
+      renderComments();
+      els.commentContent.value = '';
+      setSaveState('评论已发布', 'success');
+      loadActivities();
+    } catch (error) {
+      els.commentError.textContent = '评论发布失败：' + error.message;
+      els.commentError.classList.remove('hidden');
+      els.commentSubmit.disabled = false;
+    }
+  });
+
+  if (!workspaceId) {
+    setAlert('当前用户没有可用工作区，无法加载 Issue。', 'error');
+    return;
+  }
+
+  setControlsEnabled(false);
+  Promise.all([loadIssue(), loadComments(), loadActivities()]).catch(function(error) {
+    setAlert('Issue 加载失败：' + error.message, 'error');
+    setControlsEnabled(false);
+  });
+})();
+</script>
 {% endblock %}
