@@ -13,7 +13,7 @@ def test_tokens_page_lists_existing_token(page, live_server, browser_user):
 
     page.goto(live_server.url + "/settings/tokens/")
 
-    expect(page.get_by_role("heading", name="CLI Token")).to_be_visible()
+    expect(page.get_by_role("heading", name="CLI Token", exact=True)).to_be_visible()
     expect(page.locator("#token-list")).to_contain_text("Browser CLI Token", timeout=10_000)
     assert_no_raw_json_page(page)
     assert_no_console_errors(page.console_errors)

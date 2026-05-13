@@ -2,6 +2,7 @@
 {% block title %}看板 - 波笛智能体{% endblock %}
 
 {% block content %}
+<div data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
 <div class="max-w-full mx-auto">
   <!-- Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -37,7 +38,7 @@
         </button>
       </div>
       <div class="kanban-column-body"
-           hx-get="/api/issues/?status=backlog&limit=30&ordering=position"
+           hx-get="/api/issues?status=backlog&limit=30&ordering=position"
            hx-trigger="load"
            hx-target="this"
            hx-swap="innerHTML"
@@ -61,7 +62,7 @@
         </button>
       </div>
       <div class="kanban-column-body"
-           hx-get="/api/issues/?status=todo&limit=30&ordering=position"
+           hx-get="/api/issues?status=todo&limit=30&ordering=position"
            hx-trigger="load"
            hx-target="this"
            hx-swap="innerHTML"
@@ -85,7 +86,7 @@
         </button>
       </div>
       <div class="kanban-column-body"
-           hx-get="/api/issues/?status=in_progress&limit=30&ordering=position"
+           hx-get="/api/issues?status=in_progress&limit=30&ordering=position"
            hx-trigger="load"
            hx-target="this"
            hx-swap="innerHTML"
@@ -109,7 +110,7 @@
         </button>
       </div>
       <div class="kanban-column-body"
-           hx-get="/api/issues/?status=in_review&limit=30&ordering=position"
+           hx-get="/api/issues?status=in_review&limit=30&ordering=position"
            hx-trigger="load"
            hx-target="this"
            hx-swap="innerHTML"
@@ -133,7 +134,7 @@
         </button>
       </div>
       <div class="kanban-column-body"
-           hx-get="/api/issues/?status=done&limit=30&ordering=-updated_at"
+           hx-get="/api/issues?status=done&limit=30&ordering=-updated_at"
            hx-trigger="load"
            hx-target="this"
            hx-swap="innerHTML"
@@ -147,6 +148,12 @@
 
 {% block scripts %}
 <script>
+
+document.body.addEventListener('htmx:configRequest', function(evt) {
+  var root = document.querySelector('[data-workspace-id]');
+  var workspaceId = root ? root.dataset.workspaceId : '';
+  if (workspaceId) evt.detail.headers['X-Workspace-ID'] = workspaceId;
+});
 // Parse API responses into cards
 document.body.addEventListener('htmx:afterSettle', function(evt) {
   var target = evt.detail.target;

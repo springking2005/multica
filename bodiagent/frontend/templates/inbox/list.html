@@ -2,6 +2,7 @@
 {% block title %}收件箱 - 波笛智能体{% endblock %}
 
 {% block content %}
+<div data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
 <div class="max-w-3xl mx-auto">
   <!-- Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -11,13 +12,13 @@
     </div>
     <div class="flex gap-2">
       <button class="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              hx-post="/api/inbox/mark-all-read/"
+              hx-post="/api/inbox/mark-all-read"
               hx-target="#inbox-list"
               hx-swap="outerHTML">
         全部已读
       </button>
       <button class="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              hx-post="/api/inbox/archive-all-read/"
+              hx-post="/api/inbox/archive-all-read"
               hx-target="#inbox-list"
               hx-swap="outerHTML">
         归档已读
@@ -27,7 +28,7 @@
 
   <!-- Inbox List -->
   <div id="inbox-list" class="space-y-3"
-       hx-get="/api/inbox/?limit=20"
+       hx-get="/api/inbox?limit=20"
        hx-trigger="load"
        hx-target="this"
        hx-swap="innerHTML">
@@ -38,7 +39,7 @@
 
   <!-- Load More -->
   <div class="mt-4 text-center"
-       hx-get="/api/inbox/?offset=20&limit=20"
+       hx-get="/api/inbox?offset=20&limit=20"
        hx-trigger="revealed"
        hx-target="#inbox-list"
        hx-swap="beforeend">
@@ -49,6 +50,12 @@
 
 {% block scripts %}
 <script>
+
+document.body.addEventListener('htmx:configRequest', function(evt) {
+  var root = document.querySelector('[data-workspace-id]');
+  var workspaceId = root ? root.dataset.workspaceId : '';
+  if (workspaceId) evt.detail.headers['X-Workspace-ID'] = workspaceId;
+});
 document.body.addEventListener('htmx:afterSettle', function(evt) {
   var target = evt.detail.target;
   if (target.id !== 'inbox-list' && !target.closest('#inbox-list')) return;
@@ -68,7 +75,7 @@ document.body.addEventListener('htmx:afterSettle', function(evt) {
       var severityClass = item.severity === 'critical' ? 'text-red-600' : item.severity === 'warning' ? 'text-yellow-600' : 'text-blue-600';
 
       html += '<a href="' + issueLink + '" class="flex items-start gap-3 rounded-lg border border-gray-200 ' + bg + ' p-4 shadow-sm hover:shadow-md transition-shadow" hx-boost="true"' +
-        (isUnread ? ' hx-post="/api/inbox/' + item.id + '/read/" hx-trigger="click once"' : '') + '>' +
+        (isUnread ? ' hx-post="/api/inbox/' + item.id + '/read" hx-trigger="click once"' : '') + '>' +
         dot +
         '<div class="flex-1 min-w-0">' +
           '<div class="flex items-center gap-2 mb-1">' +

@@ -18,8 +18,8 @@ urlpatterns = [
     path("", views_frontend.home, name="home"),
     path("login/", TemplateView.as_view(template_name="accounts/login.html"), name="accounts-login"),
     path("register/", TemplateView.as_view(template_name="accounts/register.html"), name="accounts-register"),
-    path("dashboard/", login_required(TemplateView.as_view(template_name="accounts/dashboard.html")), name="dashboard"),
-    path("issues/", login_required(TemplateView.as_view(template_name="issues/board.html")), name="issues-board"),
+    path("dashboard/", login_required(views_frontend.dashboard), name="dashboard"),
+    path("issues/", login_required(views_frontend.issues_board), name="issues-board"),
     path(
         "issues/<uuid:issue_id>/",
         views_frontend.issue_detail,
@@ -30,8 +30,8 @@ urlpatterns = [
     path("agents/", login_required(views_frontend.agents), name="agents-list"),
     path("projects/", login_required(views_frontend.projects), name="projects-list"),
     path("autopilots/", login_required(views_frontend.autopilots), name="autopilots-list"),
-    path("inbox/", login_required(TemplateView.as_view(template_name="inbox/list.html")), name="inbox-list"),
-    path("settings/", login_required(TemplateView.as_view(template_name="settings/profile.html")), name="settings-profile"),
+    path("inbox/", login_required(views_frontend.inbox), name="inbox-list"),
+    path("settings/", login_required(views_frontend.settings), name="settings-profile"),
     path("settings/tokens/", login_required(views_frontend.tokens), name="settings-tokens"),
 
     # ── API routes ────────────────────────────────────────────────────

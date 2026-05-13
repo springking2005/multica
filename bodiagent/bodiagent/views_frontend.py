@@ -39,6 +39,26 @@ def home(request: HttpRequest) -> HttpResponse:
     return redirect("accounts-login")
 
 
+def dashboard(request: HttpRequest) -> HttpResponse:
+    """Serve the dashboard shell with current workspace context."""
+    return render(request, "accounts/dashboard.html", _frontend_context(request))
+
+
+def issues_board(request: HttpRequest) -> HttpResponse:
+    """Serve the issue board shell with current workspace context."""
+    return render(request, "issues/board.html", _frontend_context(request))
+
+
+def inbox(request: HttpRequest) -> HttpResponse:
+    """Serve the inbox shell with current workspace context."""
+    return render(request, "inbox/list.html", _frontend_context(request))
+
+
+def settings(request: HttpRequest) -> HttpResponse:
+    """Serve the settings profile shell with current workspace context."""
+    return render(request, "settings/profile.html", _frontend_context(request))
+
+
 def issue_detail(request: HttpRequest, issue_id: UUID) -> HttpResponse:
     """Serve the issue detail page shell. Data loaded via HTMX."""
     return render(

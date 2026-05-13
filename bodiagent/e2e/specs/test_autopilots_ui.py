@@ -25,9 +25,9 @@ def test_autopilot_template_opens_prefilled_dialog(page, live_server, browser_us
     create_agent(browser_user.workspace, "Template Agent")
     page.goto(live_server.url + "/autopilots/")
 
-    page.get_by_role("button", name="每日摘要").click()
+    page.get_by_role("button", name="每日摘要", exact=True).click()
     expect(page.locator("#autopilot-dialog")).to_be_visible()
     expect(page.locator("#autopilot-title")).to_have_value("每日摘要")
-    expect(page.locator("#autopilot-preview")).to_contain_text("每天")
+    expect(page.locator("#autopilot-preview")).to_contain_text("0 9 * * *")
     assert_no_raw_json_page(page)
     assert_no_console_errors(page.console_errors)

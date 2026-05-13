@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from typing import Any
 
 from playwright.sync_api import Page, expect
@@ -28,8 +29,25 @@ def assert_no_raw_json_page(page: Page) -> None:
         raise AssertionError(f"page body appears to be raw JSON: {text[:200]}")
 
 
-def assert_no_console_errors(errors: list[str]) -> None:
-    assert not errors, "browser console errors:\n" + "\n".join(errors)
+def assert_no_console_errors(errors: list[str], allow: Iterable[str | Iterable[str]] = ()) -> None:
+    """Fail on browser console errors, with explicit per-test allowances.
+
+    Each allow entry may be a string that must appear in an error, or an
+    iterable of strings that must all appear in the same error.
+    """
+    unexpected: list[str] = []
+    for error in errors:
+        allowed = False
+        for rule in allow:
+            if isinstance(rule, str):
+                allowed = rule in error
+            else:
+                allowed = all(part in error for part in rule)
+            if allowed:
+                break
+        if not allowed:
+            unexpected.append(error)
+    assert not unexpected, "browser console errors:\n" + "\n".join(unexpected)
 
 
 def collect_console_errors(page: Page) -> list[str]:

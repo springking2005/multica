@@ -2,6 +2,7 @@
 {% block title %}工作台 - 波笛智能体{% endblock %}
 
 {% block content %}
+<div data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
 <div class="max-w-6xl mx-auto space-y-6">
   <!-- Welcome & Quick Actions -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -23,27 +24,27 @@
 
   <!-- Quick Stats -->
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4"
-       hx-get="/api/issues/?limit=1"
+       hx-get="/api/issues?limit=1"
        hx-trigger="load"
        hx-swap="none">
     <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <p class="text-sm font-medium text-gray-500">待处理 Issues</p>
       <p class="mt-2 text-3xl font-bold text-gray-900"
-         id="stat-open" hx-get="/api/issues/?status=backlog,todo,in_progress,in_review&limit=1"
+         id="stat-open" hx-get="/api/issues?status=backlog,todo,in_progress,in_review&limit=1"
          hx-trigger="load"
          hx-swap="innerHTML">--</p>
     </div>
     <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <p class="text-sm font-medium text-gray-500">我的 Issues</p>
       <p class="mt-2 text-3xl font-bold text-gray-900"
-         id="stat-mine" hx-get="/api/issues/?assignee_id={{ request.user.id }}&limit=1"
+         id="stat-mine" hx-get="/api/issues?assignee_id={{ request.user.id }}&limit=1"
          hx-trigger="load"
          hx-swap="innerHTML">--</p>
     </div>
     <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <p class="text-sm font-medium text-gray-500">活跃智能体</p>
       <p class="mt-2 text-3xl font-bold text-gray-900"
-         id="stat-agents" hx-get="/api/agents/?status=active&limit=1"
+         id="stat-agents" hx-get="/api/agents?status=active&limit=1"
          hx-trigger="load"
          hx-swap="innerHTML">--</p>
     </div>
@@ -55,7 +56,7 @@
       <h2 class="text-sm font-semibold text-gray-900">最近动态</h2>
     </div>
     <div class="divide-y divide-gray-100"
-         hx-get="/api/inbox/?limit=5"
+         hx-get="/api/inbox?limit=5"
          hx-trigger="load"
          hx-target="this"
          hx-swap="innerHTML">
@@ -72,7 +73,7 @@
       <a href="/issues?assignee_id={{ request.user.id }}" class="text-sm text-blue-600 hover:text-blue-700" hx-boost="true">查看全部</a>
     </div>
     <div class="divide-y divide-gray-100"
-         hx-get="/api/issues/?assignee_id={{ request.user.id }}&limit=5&status=backlog,todo,in_progress,in_review&ordering=-updated_at"
+         hx-get="/api/issues?assignee_id={{ request.user.id }}&limit=5&status=backlog,todo,in_progress,in_review&ordering=-updated_at"
          hx-trigger="load"
          hx-target="this"
          hx-swap="innerHTML">
@@ -86,6 +87,12 @@
 
 {% block scripts %}
 <script>
+
+document.body.addEventListener('htmx:configRequest', function(evt) {
+  var root = document.querySelector('[data-workspace-id]');
+  var workspaceId = root ? root.dataset.workspaceId : '';
+  if (workspaceId) evt.detail.headers['X-Workspace-ID'] = workspaceId;
+});
 document.body.addEventListener('htmx:afterSettle', function(evt) {
   if (evt.detail.target.id === 'stat-open') {
     var data = JSON.parse(evt.detail.xhr.responseText);

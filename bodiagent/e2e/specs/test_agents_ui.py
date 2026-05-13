@@ -14,7 +14,7 @@ def test_agents_page_lists_seeded_agent(page, live_server, browser_user):
     page.goto(live_server.url + "/agents/")
 
     expect(page.get_by_role("heading", name="智能体")).to_be_visible()
-    expect(page.locator("#agent-grid")).to_contain_text("Browser Agent", timeout=10_000)
+    expect(page.locator("#agent-surface")).to_contain_text("Browser Agent", timeout=10_000)
     assert_no_raw_json_page(page)
     assert_no_console_errors(page.console_errors)
 
@@ -23,8 +23,9 @@ def test_agents_page_lists_seeded_agent(page, live_server, browser_user):
 def test_agents_create_dialog_validation_stays_on_page(page, live_server, browser_user):
     page.goto(live_server.url + "/agents/")
 
-    page.get_by_role("button", name="创建智能体").click()
+    page.get_by_role("button", name="创建智能体", exact=True).click()
     expect(page.locator("#agent-form")).to_be_visible()
+    page.locator("#agent-form details").click()
     page.locator("textarea[name='custom_env']").fill("{")
     page.locator("#agent-form button[type='submit']").click()
     expect(page.locator("#agent-form")).to_be_visible()
