@@ -14,16 +14,17 @@
 </head>
 <body class="bg-gray-50 min-h-screen"
       hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-      x-data="{ sidebarOpen: false }">
+      x-data="{ sidebarOpen: false }"
+      @keydown.escape.window="sidebarOpen = false; window.BodiAgentUI && window.BodiAgentUI.handleEscape($event)">
     {% include "includes/navbar.html" %}
     {% include "includes/sidebar_overlay.html" %}
     <div class="flex pt-14">
         {% include "includes/sidebar.html" %}
-        <main class="flex-1 p-4 sm:p-6 md:ml-64 min-h-[calc(100vh-3.5rem)]">
+        <main class="ba-app-main flex-1 p-3 sm:p-5 md:ml-64 min-h-[calc(100vh-3.5rem)]">
             {% if messages %}
-            <div class="mb-4 space-y-2">
+            <div class="ba-page-shell mb-4 space-y-2">
                 {% for message in messages %}
-                <div class="rounded-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm">{{ message }}</div>
+                <div class="ba-alert ba-alert--info">{{ message }}</div>
                 {% endfor %}
             </div>
             {% endif %}
@@ -31,6 +32,31 @@
         </main>
     </div>
     {% include "includes/footer.html" %}
+
+    <script>
+      window.BodiAgentUI = window.BodiAgentUI || {
+        lastFocus: null,
+        rememberFocus: function() {
+          this.lastFocus = document.activeElement;
+        },
+        restoreFocus: function() {
+          if (this.lastFocus && typeof this.lastFocus.focus === 'function') {
+            this.lastFocus.focus({preventScroll: true});
+          }
+        },
+        handleEscape: function(event) {
+          window.dispatchEvent(new CustomEvent('ba:escape', {detail: {sourceEvent: event}}));
+          var close = document.querySelector('[data-ba-dialog]:not([hidden]) [data-ba-dialog-close]');
+          if (close && typeof close.click === 'function') close.click();
+        }
+      };
+      document.addEventListener('click', function(event) {
+        var opener = event.target.closest('[data-ba-dialog-open]');
+        if (opener && window.BodiAgentUI) window.BodiAgentUI.rememberFocus();
+        var closer = event.target.closest('[data-ba-dialog-close]');
+        if (closer && window.BodiAgentUI) window.setTimeout(function() { window.BodiAgentUI.restoreFocus(); }, 0);
+      });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
