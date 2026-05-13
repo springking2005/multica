@@ -2,258 +2,525 @@
 {% block title %}自动驾驶 - 波笛智能体{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto" id="autopilot-page" data-workspace-id="{{ current_workspace_id|default:'' }}" data-member-id="{{ current_member_id|default:'' }}" data-csrf="{{ csrf_token }}">
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900">自动驾驶</h1>
-      <p class="mt-1 text-sm text-gray-500">管理定时、Webhook 和 API 触发的自动任务</p>
+<div class="ba-page-shell ba-page-shell--full max-w-7xl mx-auto" id="autopilot-page" data-workspace-id="{{ current_workspace_id|default:'' }}" data-member-id="{{ current_member_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <header class="ba-page-header">
+    <div class="ba-page-heading">
+      <p class="ba-page-eyebrow">Lane C</p>
+      <h1 class="ba-page-title">自动驾驶</h1>
+      <p class="ba-page-description">用模板、定时计划和手动触发管理工作区自动任务。</p>
     </div>
-    <button type="button" class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" onclick="openAutopilotForm()">新建自动驾驶</button>
-  </div>
+    <div class="ba-page-actions">
+      <button type="button" class="ba-button ba-button--secondary" id="autopilot-refresh">刷新</button>
+      <button type="button" class="ba-button ba-button--primary" id="autopilot-create">新建自动驾驶</button>
+    </div>
+  </header>
 
-  <div id="autopilot-alert" class="mb-4 hidden rounded-md border px-4 py-3 text-sm"></div>
+  <div id="autopilot-alert" class="ba-alert ba-alert--info mb-4 hidden" role="status"></div>
 
-  <section class="rounded-lg border border-gray-200 bg-white shadow-sm mb-6">
-    <form id="autopilot-form" class="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-      {% csrf_token %}
-      <input type="hidden" name="autopilot_id">
-      <div class="sm:col-span-2">
-        <label class="block text-sm font-medium text-gray-700 mb-1">名称</label>
-        <input name="title" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="例如：每日巡检未处理 Issue">
-      </div>
-      <div class="sm:col-span-2">
-        <label class="block text-sm font-medium text-gray-700 mb-1">描述</label>
-        <textarea name="description" rows="3" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"></textarea>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">执行智能体</label>
-        <select name="assignee" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
-          <option value="">请选择智能体</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">执行模式</label>
-        <select name="execution_mode" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
-          <option value="create_issue">创建 Issue 并执行</option>
-          <option value="run_only">仅执行</option>
-        </select>
-      </div>
-      <div class="sm:col-span-2">
-        <label class="block text-sm font-medium text-gray-700 mb-1">Issue 标题模板</label>
-        <input name="issue_title_template" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="例如：自动巡检：{{ date }}">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">触发器类型</label>
-        <select name="trigger_kind" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
-          <option value="schedule">定时</option>
-          <option value="webhook">Webhook</option>
-          <option value="api">API</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">触发器标签</label>
-        <input name="trigger_label" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="工作日巡检">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Cron 表达式</label>
-        <input name="cron_expression" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="0 9 * * 1-5">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">时区</label>
-        <input name="timezone" value="Asia/Shanghai" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
-      </div>
-      <label class="flex items-center gap-2 text-sm text-gray-700">
-        <input type="checkbox" name="trigger_enabled" class="h-4 w-4 rounded border-gray-300 text-blue-600" checked>
-        启用触发器
-      </label>
-      <div class="flex items-end justify-end gap-2">
-        <button type="button" class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="openAutopilotForm()">清空</button>
-        <button type="submit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">保存</button>
-      </div>
-    </form>
+  <section class="ba-toolbar" aria-label="自动驾驶模板">
+    <div class="ba-toolbar-group">
+      <span class="ba-toolbar-label">模板</span>
+      <button type="button" class="ba-button ba-button--ghost" data-template-key="daily_summary">每日摘要</button>
+      <button type="button" class="ba-button ba-button--ghost" data-template-key="pr_review">PR Review</button>
+      <button type="button" class="ba-button ba-button--ghost" data-template-key="bug_triage">Bug Triage</button>
+      <button type="button" class="ba-button ba-button--ghost" data-template-key="weekly_report">Weekly Report</button>
+      <button type="button" class="ba-button ba-button--ghost" data-template-key="dependency_audit">Dependency Audit</button>
+      <button type="button" class="ba-button ba-button--ghost" data-template-key="docs_check">Documentation Check</button>
+    </div>
   </section>
 
-  <div id="autopilot-list" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-    <div class="rounded-lg border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-500">加载中...</div>
+  <div id="autopilot-list" class="space-y-4">
+    <div class="ba-empty-state">
+      <div class="ba-empty-state-icon">⏱</div>
+      <div class="ba-empty-state-title">加载自动驾驶...</div>
+      <p class="ba-empty-state-body">正在读取自动驾驶、智能体和最近运行状态。</p>
+    </div>
+  </div>
+
+  <div id="autopilot-dialog" data-ba-dialog hidden class="ba-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="autopilot-dialog-title" aria-describedby="autopilot-dialog-description">
+    <div class="ba-dialog-panel ba-dialog-panel--wide">
+      <div class="ba-dialog-header">
+        <div>
+          <h2 id="autopilot-dialog-title" class="ba-dialog-title">新建自动驾驶</h2>
+          <p id="autopilot-dialog-description" class="ba-dialog-description">配置提示词、执行智能体和触发计划。保存失败时会保留表单输入。</p>
+        </div>
+        <button type="button" class="ba-icon-button" data-ba-dialog-close aria-label="关闭自动驾驶表单">✕</button>
+      </div>
+      <form id="autopilot-form" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="autopilot_id">
+        <div class="ba-dialog-body space-y-4">
+          <div id="autopilot-form-error" class="ba-alert ba-alert--error hidden" role="alert"></div>
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <label for="autopilot-title" class="block text-sm font-medium text-gray-700 mb-1">标题</label>
+              <input id="autopilot-title" name="title" required class="ba-input" placeholder="例如：每日摘要">
+            </div>
+            <div class="md:col-span-2">
+              <label for="autopilot-description" class="block text-sm font-medium text-gray-700 mb-1">Prompt / 描述</label>
+              <textarea id="autopilot-description" name="description" rows="5" class="ba-textarea" placeholder="描述自动驾驶要检查、总结或执行的任务"></textarea>
+            </div>
+            <div>
+              <label for="autopilot-assignee" class="block text-sm font-medium text-gray-700 mb-1">执行智能体</label>
+              <select id="autopilot-assignee" name="assignee" required class="ba-select">
+                <option value="">请选择智能体</option>
+              </select>
+            </div>
+            <div>
+              <label for="autopilot-execution-mode" class="block text-sm font-medium text-gray-700 mb-1">输出模式</label>
+              <select id="autopilot-execution-mode" name="execution_mode" class="ba-select">
+                <option value="create_issue">创建 Issue 并执行</option>
+                <option value="run_only">仅运行并记录结果</option>
+              </select>
+            </div>
+            <div class="md:col-span-2">
+              <label for="autopilot-issue-title-template" class="block text-sm font-medium text-gray-700 mb-1">Issue 标题模板 / 输出标题</label>
+              <input id="autopilot-issue-title-template" name="issue_title_template" class="ba-input" placeholder="例如：自动摘要：{{ date }}">
+            </div>
+            <div>
+              <label for="autopilot-frequency" class="block text-sm font-medium text-gray-700 mb-1">频率</label>
+              <select id="autopilot-frequency" name="frequency" class="ba-select">
+                <option value="daily">每天</option>
+                <option value="weekdays">工作日</option>
+                <option value="weekly">每周</option>
+                <option value="monthly">每月</option>
+                <option value="custom">自定义 Cron</option>
+                <option value="webhook">Webhook</option>
+                <option value="api">API 触发</option>
+              </select>
+            </div>
+            <div>
+              <label for="autopilot-time" class="block text-sm font-medium text-gray-700 mb-1">执行时间</label>
+              <input id="autopilot-time" name="time" type="time" class="ba-input" value="09:00">
+            </div>
+            <div>
+              <label for="autopilot-timezone" class="block text-sm font-medium text-gray-700 mb-1">时区</label>
+              <input id="autopilot-timezone" name="timezone" class="ba-input" value="Asia/Shanghai">
+            </div>
+            <div>
+              <label for="autopilot-cron-expression" class="block text-sm font-medium text-gray-700 mb-1">自定义 Cron</label>
+              <input id="autopilot-cron-expression" name="cron_expression" class="ba-input" placeholder="0 9 * * 1-5">
+            </div>
+            <div>
+              <label for="autopilot-trigger-kind" class="block text-sm font-medium text-gray-700 mb-1">触发器类型</label>
+              <select id="autopilot-trigger-kind" name="trigger_kind" class="ba-select">
+                <option value="schedule">定时</option>
+                <option value="webhook">Webhook</option>
+                <option value="api">API</option>
+              </select>
+            </div>
+            <div>
+              <label for="autopilot-trigger-label" class="block text-sm font-medium text-gray-700 mb-1">触发器标签</label>
+              <input id="autopilot-trigger-label" name="trigger_label" class="ba-input" placeholder="工作日巡检">
+            </div>
+          </div>
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" name="trigger_enabled" class="h-4 w-4 rounded border-gray-300 text-blue-600" checked>
+            启用触发器
+          </label>
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-gray-900">计划预览</p>
+                <p id="autopilot-preview" class="mt-1 text-sm text-gray-600">每天 09:00 Asia/Shanghai 运行。</p>
+              </div>
+              <span id="autopilot-cron-preview" class="ba-badge ba-badge--info">0 9 * * *</span>
+            </div>
+          </div>
+        </div>
+        <div class="ba-dialog-footer">
+          <button type="button" class="ba-button ba-button--secondary" data-ba-dialog-close>取消</button>
+          <button type="submit" class="ba-button ba-button--primary" id="autopilot-save">保存</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-var autopilotPage = document.getElementById('autopilot-page');
-var autopilotWorkspaceId = autopilotPage ? autopilotPage.dataset.workspaceId : '';
-var autopilotCsrf = autopilotPage ? autopilotPage.dataset.csrf : '';
-var autopilotState = {autopilots: [], agents: []};
+(function() {
+  var root = document.getElementById('autopilot-page');
+  if (!root) return;
 
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('autopilot-form').addEventListener('submit', submitAutopilotForm);
-  loadAutopilots();
-});
-
-function autopilotHeaders() {
-  return {'Content-Type': 'application/json', 'X-CSRFToken': autopilotCsrf, 'X-Workspace-ID': autopilotWorkspaceId};
-}
-
-async function loadAutopilots() {
-  if (!autopilotWorkspaceId) return renderAutopilotEmpty('当前用户还没有工作区，无法加载自动驾驶。');
-  try {
-    var results = await Promise.all([
-      apiJson('/api/autopilots', {headers: autopilotHeaders()}),
-      apiJson('/api/agents', {headers: autopilotHeaders()})
-    ]);
-    autopilotState.autopilots = normalizeList(results[0]);
-    autopilotState.agents = normalizeList(results[1]);
-    renderAgentOptions();
-    renderAutopilots();
-  } catch (error) {
-    renderAutopilotEmpty('加载失败：' + error.message);
-  }
-}
-
-function renderAgentOptions() {
-  var select = document.querySelector('#autopilot-form [name="assignee"]');
-  select.innerHTML = '<option value="">请选择智能体</option>' + autopilotState.agents.map(function(agent) {
-    return '<option value="' + escapeHtml(agent.id) + '">' + escapeHtml(agent.name || agent.provider || agent.id) + '</option>';
-  }).join('');
-}
-
-function renderAutopilots() {
-  var list = document.getElementById('autopilot-list');
-  if (!autopilotState.autopilots.length) return renderAutopilotEmpty('暂无自动驾驶，填写上方表单创建第一个。');
-  list.innerHTML = autopilotState.autopilots.map(function(item) {
-    var trigger = (item.triggers || [])[0] || {};
-    var statusClass = item.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600';
-    return '<article class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">' +
-      '<div class="flex items-start justify-between gap-3">' +
-        '<div class="min-w-0"><h2 class="truncate text-base font-semibold text-gray-900">' + escapeHtml(item.title) + '</h2>' +
-        '<p class="mt-1 text-xs text-gray-500">' + modeLabel(item.execution_mode) + '</p></div>' +
-        '<span class="rounded-full px-2 py-1 text-xs font-medium ' + statusClass + '">' + statusLabel(item.status) + '</span>' +
-      '</div>' +
-      '<p class="mt-3 min-h-[3rem] text-sm text-gray-600">' + escapeHtml(item.description || '无描述') + '</p>' +
-      '<div class="mt-3 rounded-md bg-gray-50 p-3 text-xs text-gray-600">' +
-        '<div>触发器：' + triggerKindLabel(trigger.kind) + (trigger.label ? ' / ' + escapeHtml(trigger.label) : '') + '</div>' +
-        '<div class="mt-1">Cron：' + escapeHtml(trigger.cron_expression || '-') + '</div>' +
-      '</div>' +
-      '<div class="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">' +
-        '<button type="button" class="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50" onclick="openAutopilotForm(\'' + item.id + '\')">编辑</button>' +
-        '<button type="button" class="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50" onclick="toggleAutopilot(\'' + item.id + '\')">' + (item.status === 'active' ? '暂停' : '启用') + '</button>' +
-        '<button type="button" class="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50" onclick="deleteAutopilot(\'' + item.id + '\')">删除</button>' +
-      '</div>' +
-    '</article>';
-  }).join('');
-}
-
-function renderAutopilotEmpty(message) {
-  document.getElementById('autopilot-list').innerHTML =
-    '<div class="lg:col-span-2 rounded-lg border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-500">' + escapeHtml(message) + '</div>';
-}
-
-function openAutopilotForm(itemId) {
-  var form = document.getElementById('autopilot-form');
-  form.reset();
-  form.autopilot_id.value = '';
-  form.execution_mode.value = 'create_issue';
-  form.trigger_kind.value = 'schedule';
-  form.timezone.value = 'Asia/Shanghai';
-  form.trigger_enabled.checked = true;
-  var item = autopilotState.autopilots.find(function(row) { return row.id === itemId; });
-  if (item) {
-    var trigger = (item.triggers || [])[0] || {};
-    form.autopilot_id.value = item.id;
-    form.title.value = item.title || '';
-    form.description.value = item.description || '';
-    form.assignee.value = item.assignee || '';
-    form.execution_mode.value = item.execution_mode || 'create_issue';
-    form.issue_title_template.value = item.issue_title_template || '';
-    form.trigger_kind.value = trigger.kind || 'schedule';
-    form.trigger_label.value = trigger.label || '';
-    form.cron_expression.value = trigger.cron_expression || '';
-    form.timezone.value = trigger.timezone || 'Asia/Shanghai';
-    form.trigger_enabled.checked = trigger.enabled !== false;
-  }
-  form.title.focus();
-}
-
-async function submitAutopilotForm(event) {
-  event.preventDefault();
-  var form = event.currentTarget;
-  var autopilotId = form.autopilot_id.value;
-  var payload = {
-    title: form.title.value.trim(),
-    description: form.description.value.trim(),
-    assignee: form.assignee.value,
-    execution_mode: form.execution_mode.value,
-    issue_title_template: form.issue_title_template.value.trim()
+  var workspaceId = root.dataset.workspaceId || '';
+  var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var state = {autopilots: [], agents: [], runsByAutopilot: {}, pendingRuns: {}};
+  var templates = {
+    daily_summary: {title: '每日摘要', description: '汇总过去 24 小时的重要 Issue、阻塞项、完成项和明日风险。', execution_mode: 'create_issue', frequency: 'daily', time: '09:00', issue_title_template: '每日摘要：{{ date }}', label: '每日摘要'},
+    pr_review: {title: 'PR Review', description: '检查待审 PR，重点关注测试风险、回归风险和需要人工决策的地方。', execution_mode: 'create_issue', frequency: 'weekdays', time: '10:00', issue_title_template: 'PR Review：{{ date }}', label: 'PR Review'},
+    bug_triage: {title: 'Bug Triage', description: '扫描新缺陷并按影响范围、复现难度和优先级生成分诊建议。', execution_mode: 'create_issue', frequency: 'weekdays', time: '11:00', issue_title_template: 'Bug Triage：{{ date }}', label: 'Bug Triage'},
+    weekly_report: {title: 'Weekly Report', description: '生成本周进展、风险、关键决策和下周建议。', execution_mode: 'create_issue', frequency: 'weekly', time: '17:00', issue_title_template: 'Weekly Report：{{ date }}', label: 'Weekly Report'},
+    dependency_audit: {title: 'Dependency Audit', description: '检查依赖升级、安全告警和维护风险，输出需要处理的清单。', execution_mode: 'create_issue', frequency: 'weekly', time: '15:00', issue_title_template: 'Dependency Audit：{{ date }}', label: 'Dependency Audit'},
+    docs_check: {title: 'Documentation Check', description: '检查最近产品和接口变更是否需要同步文档、启动指南或测试计划。', execution_mode: 'run_only', frequency: 'weekly', time: '16:00', issue_title_template: 'Documentation Check：{{ date }}', label: 'Documentation Check'}
   };
-  try {
-    var saved = await apiJson(autopilotId ? '/api/autopilots/' + autopilotId : '/api/autopilots', {
-      method: autopilotId ? 'PATCH' : 'POST',
-      headers: autopilotHeaders(),
+
+  var els = {
+    alert: document.getElementById('autopilot-alert'),
+    list: document.getElementById('autopilot-list'),
+    dialog: document.getElementById('autopilot-dialog'),
+    form: document.getElementById('autopilot-form'),
+    formError: document.getElementById('autopilot-form-error'),
+    dialogTitle: document.getElementById('autopilot-dialog-title'),
+    preview: document.getElementById('autopilot-preview'),
+    cronPreview: document.getElementById('autopilot-cron-preview'),
+    save: document.getElementById('autopilot-save')
+  };
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  function init() {
+    document.getElementById('autopilot-create').addEventListener('click', function() { openForm(); });
+    document.getElementById('autopilot-refresh').addEventListener('click', loadAutopilots);
+    els.form.addEventListener('submit', submitForm);
+    els.form.frequency.addEventListener('change', syncScheduleFromFrequency);
+    els.form.time.addEventListener('input', updatePreview);
+    els.form.timezone.addEventListener('input', updatePreview);
+    els.form.cron_expression.addEventListener('input', updatePreview);
+    els.form.trigger_kind.addEventListener('change', updatePreview);
+    root.addEventListener('click', handleClick);
+    root.addEventListener('change', function(event) {
+      if (event.target.name === 'frequency') syncScheduleFromFrequency();
+    });
+    loadAutopilots();
+  }
+
+  function handleClick(event) {
+    var close = event.target.closest('[data-ba-dialog-close]');
+    if (close) closeDialog();
+    var templateButton = event.target.closest('[data-template-key]');
+    if (templateButton) openForm(null, templates[templateButton.dataset.templateKey]);
+    var action = event.target.closest('[data-autopilot-action]');
+    if (!action) return;
+    var id = action.dataset.autopilotId;
+    if (action.dataset.autopilotAction === 'edit') openForm(id);
+    if (action.dataset.autopilotAction === 'toggle') toggleAutopilot(id);
+    if (action.dataset.autopilotAction === 'trigger') triggerAutopilot(id);
+    if (action.dataset.autopilotAction === 'delete') deleteAutopilot(id);
+  }
+
+  function headers() {
+    return {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, 'X-Workspace-ID': workspaceId};
+  }
+
+  async function loadAutopilots() {
+    if (!workspaceId) return renderEmpty('当前用户还没有工作区，无法加载自动驾驶。', true);
+    showAlert('正在刷新自动驾驶...', 'info', true);
+    try {
+      var results = await Promise.all([
+        apiJson('/api/autopilots', {headers: headers()}),
+        apiJson('/api/agents', {headers: headers()})
+      ]);
+      state.autopilots = normalizeList(results[0]);
+      state.agents = normalizeList(results[1]);
+      renderAgentOptions();
+      renderAutopilots();
+      await loadVisibleRuns();
+      hideAlert();
+    } catch (error) {
+      renderEmpty('加载失败：' + error.message, false);
+      showAlert(error.message, 'error');
+    }
+  }
+
+  async function loadVisibleRuns() {
+    await Promise.all(state.autopilots.map(async function(item) {
+      try {
+        state.runsByAutopilot[item.id] = normalizeList(await apiJson('/api/autopilots/' + item.id + '/runs', {headers: headers()}));
+      } catch (error) {
+        state.runsByAutopilot[item.id] = [];
+      }
+    }));
+    renderAutopilots();
+  }
+
+  function renderAgentOptions() {
+    els.form.assignee.innerHTML = '<option value="">请选择智能体</option>' + state.agents.map(function(agent) {
+      return '<option value="' + escapeAttr(agent.id) + '">' + escapeHtml(agent.name || agent.provider || agent.id) + '</option>';
+    }).join('');
+  }
+
+  function renderAutopilots() {
+    if (!state.autopilots.length) return renderEmpty('选择上方模板或新建自动驾驶，创建第一个自动任务。', true);
+    els.list.innerHTML = '<div class="ba-table-wrap"><table class="ba-table"><thead><tr>' +
+      '<th>自动驾驶</th><th>智能体 / 输出</th><th>状态</th><th>触发</th><th>最近运行</th><th class="text-right">操作</th>' +
+      '</tr></thead><tbody>' + state.autopilots.map(renderRow).join('') + '</tbody></table></div>';
+  }
+
+  function renderRow(item) {
+    var trigger = (item.triggers || [])[0] || {};
+    var agent = findAgent(item.assignee);
+    var run = (state.pendingRuns[item.id] ? state.pendingRuns[item.id] : null) || ((state.runsByAutopilot[item.id] || [])[0] || null);
+    var statusClass = item.status === 'active' ? 'ba-badge--success' : 'ba-badge--neutral';
+    var triggerSummary = trigger.kind ? triggerKindLabel(trigger.kind) + (trigger.enabled === false ? '（已停用）' : '') : '未配置';
+    var cron = trigger.cron_expression || '-';
+    return '<tr>' +
+      '<td><div class="font-semibold text-gray-900">' + escapeHtml(item.title || '未命名自动驾驶') + '</div>' +
+        '<div class="mt-1 max-w-md text-xs text-gray-500 line-clamp-2">' + escapeHtml(item.description || '无描述') + '</div></td>' +
+      '<td><div class="text-sm text-gray-800">' + escapeHtml(agent ? agent.name || agent.provider || agent.id : item.assignee || '未分配') + '</div>' +
+        '<div class="mt-1 text-xs text-gray-500">' + modeLabel(item.execution_mode) + '</div></td>' +
+      '<td><span class="ba-badge ' + statusClass + '">' + statusLabel(item.status) + '</span></td>' +
+      '<td><div class="text-sm text-gray-800">' + escapeHtml(triggerSummary) + '</div>' +
+        '<div class="mt-1 text-xs text-gray-500">' + escapeHtml(trigger.label || '') + (trigger.label ? ' · ' : '') + escapeHtml(cron) + '</div></td>' +
+      '<td><div id="autopilot-run-' + escapeAttr(item.id) + '">' + renderRun(run, item.last_run_at) + '</div></td>' +
+      '<td><div class="ba-row-actions justify-end">' +
+        '<button type="button" class="ba-button ba-button--secondary" data-autopilot-action="trigger" data-autopilot-id="' + escapeAttr(item.id) + '">运行</button>' +
+        '<button type="button" class="ba-button ba-button--ghost" data-autopilot-action="edit" data-autopilot-id="' + escapeAttr(item.id) + '">编辑</button>' +
+        '<button type="button" class="ba-button ba-button--ghost" data-autopilot-action="toggle" data-autopilot-id="' + escapeAttr(item.id) + '">' + (item.status === 'active' ? '暂停' : '启用') + '</button>' +
+        '<button type="button" class="ba-button ba-button--danger-outline" data-autopilot-action="delete" data-autopilot-id="' + escapeAttr(item.id) + '">删除</button>' +
+      '</div></td>' +
+    '</tr>';
+  }
+
+  function renderRun(run, lastRunAt) {
+    if (!run && !lastRunAt) return '<span class="text-sm text-gray-400">尚未运行</span>';
+    if (!run) return '<span class="text-sm text-gray-600">' + formatDateTime(lastRunAt) + '</span>';
+    var badge = run.status === 'completed' ? 'ba-badge--success' : (run.status === 'failed' ? 'ba-badge--danger' : 'ba-badge--info');
+    return '<div><span class="ba-badge ' + badge + '">' + runStatusLabel(run.status) + '</span>' +
+      '<div class="mt-1 text-xs text-gray-500">' + formatDateTime(run.triggered_at || run.created_at) + '</div>' +
+      (run.failure_reason ? '<div class="mt-1 text-xs text-red-600">' + escapeHtml(run.failure_reason) + '</div>' : '') + '</div>';
+  }
+
+  function renderEmpty(message, includeTemplates) {
+    els.list.innerHTML = '<div class="ba-empty-state">' +
+      '<div class="ba-empty-state-icon">⚡</div>' +
+      '<div class="ba-empty-state-title">' + escapeHtml(message) + '</div>' +
+      '<p class="ba-empty-state-body">' + (includeTemplates ? '从每日摘要、PR Review、Bug Triage、Weekly Report、Dependency Audit 或 Documentation Check 开始。' : '请稍后重试或检查工作区权限。') + '</p>' +
+      (includeTemplates ? '<button type="button" class="ba-button ba-button--primary" data-template-key="daily_summary">使用每日摘要模板</button>' : '') +
+      '</div>';
+  }
+
+  function openForm(itemId, preset) {
+    var item = state.autopilots.find(function(row) { return row.id === itemId; });
+    var trigger = item && (item.triggers || [])[0] || {};
+    els.form.reset();
+    els.form.autopilot_id.value = '';
+    els.form.execution_mode.value = 'create_issue';
+    els.form.frequency.value = 'daily';
+    els.form.time.value = '09:00';
+    els.form.trigger_kind.value = 'schedule';
+    els.form.timezone.value = 'Asia/Shanghai';
+    els.form.trigger_enabled.checked = true;
+    els.formError.classList.add('hidden');
+    els.dialogTitle.textContent = item ? '编辑自动驾驶' : '新建自动驾驶';
+    if (preset) applyPreset(preset);
+    if (item) {
+      els.form.autopilot_id.value = item.id;
+      els.form.title.value = item.title || '';
+      els.form.description.value = item.description || '';
+      els.form.assignee.value = item.assignee || '';
+      els.form.execution_mode.value = item.execution_mode || 'create_issue';
+      els.form.issue_title_template.value = item.issue_title_template || '';
+      els.form.trigger_kind.value = trigger.kind || 'schedule';
+      els.form.trigger_label.value = trigger.label || '';
+      els.form.timezone.value = trigger.timezone || 'Asia/Shanghai';
+      els.form.cron_expression.value = trigger.cron_expression || '';
+      els.form.trigger_enabled.checked = trigger.enabled !== false;
+      inferFrequencyFromCron(trigger.cron_expression || '');
+    }
+    updatePreview();
+    if (window.BodiAgentUI) window.BodiAgentUI.rememberFocus();
+    els.dialog.hidden = false;
+    window.setTimeout(function() { els.form.title.focus(); }, 0);
+  }
+
+  function applyPreset(preset) {
+    els.form.title.value = preset.title || '';
+    els.form.description.value = preset.description || '';
+    els.form.execution_mode.value = preset.execution_mode || 'create_issue';
+    els.form.frequency.value = preset.frequency || 'daily';
+    els.form.time.value = preset.time || '09:00';
+    els.form.issue_title_template.value = preset.issue_title_template || '';
+    els.form.trigger_label.value = preset.label || '';
+    syncScheduleFromFrequency();
+  }
+
+  function closeDialog() {
+    els.dialog.hidden = true;
+    if (window.BodiAgentUI) window.BodiAgentUI.restoreFocus();
+  }
+
+  function syncScheduleFromFrequency() {
+    var frequency = els.form.frequency.value;
+    var time = els.form.time.value || '09:00';
+    var parts = time.split(':');
+    var hour = String(Number(parts[0] || 9));
+    var minute = String(Number(parts[1] || 0));
+    if (frequency === 'daily') setTrigger('schedule', minute + ' ' + hour + ' * * *');
+    if (frequency === 'weekdays') setTrigger('schedule', minute + ' ' + hour + ' * * 1-5');
+    if (frequency === 'weekly') setTrigger('schedule', minute + ' ' + hour + ' * * 1');
+    if (frequency === 'monthly') setTrigger('schedule', minute + ' ' + hour + ' 1 * *');
+    if (frequency === 'custom') els.form.trigger_kind.value = 'schedule';
+    if (frequency === 'webhook') setTrigger('webhook', '');
+    if (frequency === 'api') setTrigger('api', '');
+    updatePreview();
+  }
+
+  function setTrigger(kind, cron) {
+    els.form.trigger_kind.value = kind;
+    els.form.cron_expression.value = cron;
+  }
+
+  function inferFrequencyFromCron(cron) {
+    var known = {'0 9 * * *': 'daily', '0 9 * * 1-5': 'weekdays', '0 9 * * 1': 'weekly', '0 9 1 * *': 'monthly'};
+    els.form.frequency.value = known[cron] || (els.form.trigger_kind.value === 'webhook' ? 'webhook' : (els.form.trigger_kind.value === 'api' ? 'api' : 'custom'));
+  }
+
+  function updatePreview() {
+    var kind = els.form.trigger_kind.value;
+    var cron = els.form.cron_expression.value.trim();
+    var timezone = els.form.timezone.value.trim() || 'Asia/Shanghai';
+    els.cronPreview.textContent = cron || kind.toUpperCase();
+    if (kind === 'webhook') els.preview.textContent = '通过 Webhook 触发；保存后后端会管理 webhook token。';
+    else if (kind === 'api') els.preview.textContent = '通过 API 触发，适合外部系统调用。';
+    else els.preview.textContent = '按 Cron「' + (cron || '未填写') + '」在 ' + timezone + ' 运行。';
+  }
+
+  async function submitForm(event) {
+    event.preventDefault();
+    var form = els.form;
+    var autopilotId = form.autopilot_id.value;
+    var validation = validateForm();
+    if (validation) return showFormError(validation);
+    var payload = {
+      title: form.title.value.trim(),
+      description: form.description.value.trim(),
+      assignee: form.assignee.value,
+      execution_mode: form.execution_mode.value,
+      issue_title_template: form.issue_title_template.value.trim()
+    };
+    setSaving(true);
+    try {
+      var saved = await apiJson(autopilotId ? '/api/autopilots/' + autopilotId : '/api/autopilots', {
+        method: autopilotId ? 'PATCH' : 'POST',
+        headers: headers(),
+        body: JSON.stringify(payload)
+      });
+      await saveTrigger(saved.id || autopilotId, form);
+      closeDialog();
+      showAlert(autopilotId ? '自动驾驶已更新。' : '自动驾驶已创建。', 'success');
+      await loadAutopilots();
+    } catch (error) {
+      showFormError(error.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function validateForm() {
+    if (!els.form.title.value.trim()) return '请填写标题。';
+    if (!els.form.assignee.value) return '请选择执行智能体。';
+    if (els.form.trigger_kind.value === 'schedule' && !els.form.cron_expression.value.trim()) return '定时触发器需要 Cron 表达式。';
+    if (!els.form.timezone.value.trim()) return '请填写时区。';
+    return '';
+  }
+
+  async function saveTrigger(autopilotId, form) {
+    var item = state.autopilots.find(function(row) { return row.id === autopilotId; });
+    var trigger = item && (item.triggers || [])[0];
+    var payload = {
+      kind: form.trigger_kind.value,
+      label: form.trigger_label.value.trim(),
+      enabled: form.trigger_enabled.checked,
+      cron_expression: form.cron_expression.value.trim(),
+      timezone: form.timezone.value.trim() || 'Asia/Shanghai'
+    };
+    await apiJson(trigger ? '/api/autopilots/' + autopilotId + '/triggers/' + trigger.id : '/api/autopilots/' + autopilotId + '/triggers', {
+      method: trigger ? 'PATCH' : 'POST',
+      headers: headers(),
       body: JSON.stringify(payload)
     });
-    await saveAutopilotTrigger(saved.id || autopilotId, form);
-    showAutopilotAlert(autopilotId ? '自动驾驶已更新。' : '自动驾驶已创建。', 'success');
-    openAutopilotForm();
-    await loadAutopilots();
-  } catch (error) {
-    showAutopilotAlert(error.message, 'error');
   }
-}
 
-async function saveAutopilotTrigger(autopilotId, form) {
-  var item = autopilotState.autopilots.find(function(row) { return row.id === autopilotId; });
-  var trigger = item && (item.triggers || [])[0];
-  var payload = {
-    kind: form.trigger_kind.value,
-    label: form.trigger_label.value.trim(),
-    enabled: form.trigger_enabled.checked,
-    cron_expression: form.cron_expression.value.trim(),
-    timezone: form.timezone.value.trim() || 'Asia/Shanghai'
-  };
-  await apiJson(trigger ? '/api/autopilots/' + autopilotId + '/triggers/' + trigger.id : '/api/autopilots/' + autopilotId + '/triggers', {
-    method: trigger ? 'PATCH' : 'POST',
-    headers: autopilotHeaders(),
-    body: JSON.stringify(payload)
-  });
-}
-
-async function toggleAutopilot(itemId) {
-  var item = autopilotState.autopilots.find(function(row) { return row.id === itemId; });
-  if (!item) return;
-  try {
-    await apiJson('/api/autopilots/' + itemId + '/' + (item.status === 'active' ? 'disable' : 'enable') + '/', {method: 'POST', headers: autopilotHeaders()});
-    await loadAutopilots();
-  } catch (error) {
-    showAutopilotAlert(error.message, 'error');
+  async function toggleAutopilot(itemId) {
+    var item = state.autopilots.find(function(row) { return row.id === itemId; });
+    if (!item) return;
+    try {
+      await apiJson('/api/autopilots/' + itemId + '/' + (item.status === 'active' ? 'disable' : 'enable') + '/', {method: 'POST', headers: headers()});
+      showAlert(item.status === 'active' ? '自动驾驶已暂停。' : '自动驾驶已启用。', 'success');
+      await loadAutopilots();
+    } catch (error) {
+      showAlert(error.message, 'error');
+    }
   }
-}
 
-async function deleteAutopilot(itemId) {
-  if (!confirm('确定删除这个自动驾驶吗？')) return;
-  try {
-    await apiJson('/api/autopilots/' + itemId, {method: 'DELETE', headers: autopilotHeaders()});
-    showAutopilotAlert('自动驾驶已删除。', 'success');
-    await loadAutopilots();
-  } catch (error) {
-    showAutopilotAlert(error.message, 'error');
+  async function triggerAutopilot(itemId) {
+    try {
+      state.pendingRuns[itemId] = {status: 'running', triggered_at: new Date().toISOString()};
+      renderAutopilots();
+      var run = await apiJson('/api/autopilots/' + itemId + '/trigger/', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({mode: 'run_only'})
+      });
+      state.pendingRuns[itemId] = run;
+      showAlert('已手动触发自动驾驶。', 'success');
+      await loadVisibleRuns();
+    } catch (error) {
+      delete state.pendingRuns[itemId];
+      showAlert(error.message, 'error');
+      renderAutopilots();
+    }
   }
-}
 
-function showAutopilotAlert(message, type) {
-  var alert = document.getElementById('autopilot-alert');
-  alert.className = 'mb-4 rounded-md border px-4 py-3 text-sm ' +
-    (type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700');
-  alert.textContent = message;
-  alert.classList.remove('hidden');
-}
+  async function deleteAutopilot(itemId) {
+    if (!confirm('确定删除这个自动驾驶吗？历史运行记录也会随之移除。')) return;
+    try {
+      await apiJson('/api/autopilots/' + itemId, {method: 'DELETE', headers: headers()});
+      showAlert('自动驾驶已删除。', 'success');
+      await loadAutopilots();
+    } catch (error) {
+      showAlert(error.message, 'error');
+    }
+  }
 
-function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []); }
-function escapeHtml(str) { var div = document.createElement('div'); div.textContent = String(str == null ? '' : str); return div.innerHTML; }
-function statusLabel(value) { return ({active:'启用', paused:'暂停'})[value] || value || '暂停'; }
-function modeLabel(value) { return ({create_issue:'创建 Issue 并执行', run_only:'仅执行'})[value] || value || '创建 Issue 并执行'; }
-function triggerKindLabel(value) { return ({schedule:'定时', webhook:'Webhook', api:'API'})[value] || value || '-'; }
-async function apiJson(url, options) { var response = await fetch(url, options || {}); var text = await response.text(); var data = text ? JSON.parse(text) : {}; if (!response.ok) throw new Error(formatApiError(data)); return data; }
-function formatApiError(data) { if (data.detail) return data.detail; return Object.keys(data || {}).map(function(key) { return key + ': ' + (Array.isArray(data[key]) ? data[key].join('，') : JSON.stringify(data[key])); }).join('；') || '请求失败'; }
+  function setSaving(isSaving) {
+    els.save.disabled = isSaving;
+    els.save.textContent = isSaving ? '保存中...' : '保存';
+  }
+
+  function showFormError(message) {
+    els.formError.textContent = message;
+    els.formError.classList.remove('hidden');
+  }
+
+  function showAlert(message, type, quiet) {
+    els.alert.className = 'ba-alert mb-4 ba-alert--' + (type || 'info');
+    els.alert.textContent = message;
+    els.alert.classList.remove('hidden');
+    if (!quiet && type === 'success') window.setTimeout(hideAlert, 3500);
+  }
+
+  function hideAlert() {
+    els.alert.classList.add('hidden');
+  }
+
+  function findAgent(id) {
+    return state.agents.find(function(agent) { return String(agent.id) === String(id); });
+  }
+
+  function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []); }
+  function escapeHtml(str) { var div = document.createElement('div'); div.textContent = String(str == null ? '' : str); return div.innerHTML; }
+  function escapeAttr(str) { return escapeHtml(str).replace(/"/g, '&quot;'); }
+  function statusLabel(value) { return ({active:'启用', paused:'暂停'})[value] || value || '暂停'; }
+  function modeLabel(value) { return ({create_issue:'创建 Issue', run_only:'仅运行'})[value] || value || '创建 Issue'; }
+  function triggerKindLabel(value) { return ({schedule:'定时', webhook:'Webhook', api:'API'})[value] || value || '-'; }
+  function runStatusLabel(value) { return ({issue_created:'已创建 Issue', running:'运行中', completed:'完成', failed:'失败', skipped:'跳过'})[value] || value || '运行中'; }
+  function formatDateTime(iso) { if (!iso) return '-'; return new Date(iso).toLocaleString('zh-CN', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}); }
+  async function apiJson(url, options) {
+    var response = await fetch(url, options || {});
+    var text = await response.text();
+    var data = text ? JSON.parse(text) : {};
+    if (!response.ok) throw new Error(formatApiError(data));
+    return data;
+  }
+  function formatApiError(data) {
+    if (data.detail) return data.detail;
+    return Object.keys(data || {}).map(function(key) {
+      return key + ': ' + (Array.isArray(data[key]) ? data[key].join('，') : JSON.stringify(data[key]));
+    }).join('；') || '请求失败';
+  }
+})();
 </script>
 {% endblock %}
