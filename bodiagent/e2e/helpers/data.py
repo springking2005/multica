@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from django.conf import settings
@@ -135,13 +136,15 @@ def force_login_context(context, live_server_url: str, user: object, workspace: 
     client = Client()
     client.force_login(user)
     cookie = client.cookies[settings.SESSION_COOKIE_NAME]
+    parsed = urlparse(live_server_url)
     context.add_cookies([
         {
             "name": settings.SESSION_COOKIE_NAME,
             "value": cookie.value,
-            "url": live_server_url,
+            "domain": parsed.hostname or "127.0.0.1",
             "path": "/",
             "httpOnly": True,
+            "secure": parsed.scheme == "https",
             "sameSite": "Lax",
         }
     ])
