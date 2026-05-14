@@ -24,30 +24,18 @@
 
   {% if current_workspace_id %}
   <!-- Quick Stats -->
-  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4"
-       hx-get="/api/issues?limit=1"
-       hx-trigger="load"
-       hx-swap="none">
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
     <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <p class="text-sm font-medium text-gray-500">待处理 Issues</p>
-      <p class="mt-2 text-3xl font-bold text-gray-900"
-         id="stat-open" hx-get="/api/issues?status=backlog,todo,in_progress,in_review&limit=1"
-         hx-trigger="load"
-         hx-swap="innerHTML">--</p>
+      <p class="mt-2 text-3xl font-bold text-gray-900" id="stat-open">--</p>
     </div>
     <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <p class="text-sm font-medium text-gray-500">我的 Issues</p>
-      <p class="mt-2 text-3xl font-bold text-gray-900"
-         id="stat-mine" hx-get="/api/issues?assignee_id={{ request.user.id }}&limit=1"
-         hx-trigger="load"
-         hx-swap="innerHTML">--</p>
+      <p class="mt-2 text-3xl font-bold text-gray-900" id="stat-mine">--</p>
     </div>
     <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <p class="text-sm font-medium text-gray-500">活跃智能体</p>
-      <p class="mt-2 text-3xl font-bold text-gray-900"
-         id="stat-agents" hx-get="/api/agents?status=active&limit=1"
-         hx-trigger="load"
-         hx-swap="innerHTML">--</p>
+      <p class="mt-2 text-3xl font-bold text-gray-900" id="stat-agents">--</p>
     </div>
   </div>
 
@@ -56,11 +44,7 @@
     <div class="border-b border-gray-100 px-5 py-4">
       <h2 class="text-sm font-semibold text-gray-900">最近动态</h2>
     </div>
-    <div class="divide-y divide-gray-100"
-         hx-get="/api/inbox?limit=5"
-         hx-trigger="load"
-         hx-target="this"
-         hx-swap="innerHTML">
+    <div id="dashboard-activity" class="divide-y divide-gray-100">
       <div class="px-5 py-4 text-sm text-gray-400">
         加载中<span class="htmx-indicator">...</span>
       </div>
@@ -73,11 +57,7 @@
       <h2 class="text-sm font-semibold text-gray-900">我的 Issues</h2>
       <a href="/issues?assignee_id={{ request.user.id }}" class="text-sm text-blue-600 hover:text-blue-700" hx-boost="true">查看全部</a>
     </div>
-    <div class="divide-y divide-gray-100"
-         hx-get="/api/issues?assignee_id={{ request.user.id }}&limit=5&status=backlog,todo,in_progress,in_review&ordering=-updated_at"
-         hx-trigger="load"
-         hx-target="this"
-         hx-swap="innerHTML">
+    <div id="dashboard-my-issues" class="divide-y divide-gray-100">
       <div class="px-5 py-3 text-sm text-gray-400">
         加载中<span class="htmx-indicator">...</span>
       </div>
@@ -94,25 +74,113 @@
 
 {% block scripts %}
 <script>
-
-document.body.addEventListener('htmx:configRequest', function(evt) {
+(function() {
   var root = document.querySelector('[data-workspace-id]');
-  var workspaceId = root ? root.dataset.workspaceId : '';
-  if (workspaceId) evt.detail.headers['X-Workspace-ID'] = workspaceId;
-});
-document.body.addEventListener('htmx:afterSettle', function(evt) {
-  if (evt.detail.target.id === 'stat-open') {
-    var data = JSON.parse(evt.detail.xhr.responseText);
-    document.getElementById('stat-open').textContent = data.count || '0';
+  if (!root) return;
+  var workspaceId = root.dataset.workspaceId || '';
+  var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  if (!workspaceId) return;
+
+  function headers() {
+    return { 'Accept': 'application/json', 'X-CSRFToken': csrfToken, 'X-Workspace-ID': workspaceId };
   }
-  if (evt.detail.target.id === 'stat-mine') {
-    var data = JSON.parse(evt.detail.xhr.responseText);
-    document.getElementById('stat-mine').textContent = data.count || '0';
+
+  async function apiJson(url) {
+    var response = await fetch(url, { headers: headers(), credentials: 'same-origin' });
+    var text = await response.text();
+    var data = text ? JSON.parse(text) : {};
+    if (!response.ok) throw new Error(formatApiError(data) || ('HTTP ' + response.status));
+    return data;
   }
-  if (evt.detail.target.id === 'stat-agents') {
-    var data = JSON.parse(evt.detail.xhr.responseText);
-    document.getElementById('stat-agents').textContent = data.count || '0';
+
+  function normalizeList(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.results)) return data.results;
+    if (Array.isArray(data.items)) return data.items;
+    return [];
   }
-});
+
+  function countFrom(data) {
+    if (typeof data.count === 'number') return data.count;
+    if (typeof data.total === 'number') return data.total;
+    return normalizeList(data).length;
+  }
+
+  function formatApiError(data) {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    if (data.detail) return data.detail;
+    return Object.keys(data).map(function(key) { return key + ': ' + data[key]; }).join('; ');
+  }
+
+  function escapeHtml(value) {
+    var div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  }
+
+  function renderError(target, message) {
+    if (target) target.innerHTML = '<div class="px-5 py-4 text-sm text-red-600">加载失败：' + escapeHtml(message) + '</div>';
+  }
+
+  function renderActivity(items) {
+    var target = document.getElementById('dashboard-activity');
+    if (!target) return;
+    if (!items.length) {
+      target.innerHTML = '<div class="px-5 py-8 text-center text-sm text-gray-400">暂无动态</div>';
+      return;
+    }
+    target.innerHTML = items.map(function(item) {
+      var href = item.issue_id ? '/issues/' + item.issue_id + '/' : '/inbox/';
+      return '<a class="block px-5 py-4 hover:bg-gray-50" href="' + escapeHtml(href) + '" hx-boost="true">' +
+        '<div class="flex items-center justify-between gap-3">' +
+          '<p class="min-w-0 truncate text-sm font-medium text-gray-900">' + escapeHtml(item.title || '通知') + '</p>' +
+          '<time class="shrink-0 text-xs text-gray-400">' + escapeHtml(formatDate(item.created_at)) + '</time>' +
+        '</div>' +
+        (item.body ? '<p class="mt-1 line-clamp-2 text-sm text-gray-500">' + escapeHtml(item.body) + '</p>' : '') +
+      '</a>';
+    }).join('');
+  }
+
+  function renderIssues(items) {
+    var target = document.getElementById('dashboard-my-issues');
+    if (!target) return;
+    if (!items.length) {
+      target.innerHTML = '<div class="px-5 py-8 text-center text-sm text-gray-400">暂无分配给你的 Issue</div>';
+      return;
+    }
+    target.innerHTML = items.map(function(issue) {
+      return '<a class="block px-5 py-3 hover:bg-gray-50" href="/issues/' + escapeHtml(issue.id) + '/" hx-boost="true">' +
+        '<div class="flex items-center justify-between gap-3">' +
+          '<p class="min-w-0 truncate text-sm font-medium text-gray-900">' + escapeHtml(issue.title || 'Untitled') + '</p>' +
+          '<span class="shrink-0 rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">' + escapeHtml(issue.status || '') + '</span>' +
+        '</div>' +
+      '</a>';
+    }).join('');
+  }
+
+  Promise.all([
+    apiJson('/api/issues?status=backlog,todo,in_progress,in_review&limit=1').then(function(data) { document.getElementById('stat-open').textContent = String(countFrom(data)); }),
+    apiJson('/api/issues?assignee_type=member&assignee_id={{ current_member_id }}&limit=1').then(function(data) { document.getElementById('stat-mine').textContent = String(countFrom(data)); }),
+    apiJson('/api/agents?status=active&limit=1').then(function(data) { document.getElementById('stat-agents').textContent = String(countFrom(data)); }),
+    apiJson('/api/inbox?limit=5').then(function(data) { renderActivity(normalizeList(data)); }).catch(function(error) { renderError(document.getElementById('dashboard-activity'), error.message); }),
+    apiJson('/api/issues?assignee_type=member&assignee_id={{ current_member_id }}&limit=5&status=backlog,todo,in_progress,in_review&ordering=-updated_at').then(function(data) { renderIssues(normalizeList(data)); }).catch(function(error) { renderError(document.getElementById('dashboard-my-issues'), error.message); })
+  ]).catch(function(error) {
+    ['stat-open', 'stat-mine', 'stat-agents'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && el.textContent === '--') el.textContent = '0';
+    });
+    renderError(document.getElementById('dashboard-activity'), error.message);
+    renderError(document.getElementById('dashboard-my-issues'), error.message);
+  });
+})();
 </script>
 {% endblock %}

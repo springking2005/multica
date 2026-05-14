@@ -146,7 +146,7 @@
 
   var workspaceId = root.dataset.workspaceId || '';
   var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  var state = {autopilots: [], agents: [], runsByAutopilot: {}, pendingRuns: {}};
+  var state = {autopilots: [], agents: [], runsByAutopilot: {}, pendingRuns: {}, runsAbortController: null};
   var templates = {
     daily_summary: {title: '每日摘要', description: '汇总过去 24 小时的重要 Issue、阻塞项、完成项和明日风险。', execution_mode: 'create_issue', frequency: 'daily', time: '09:00', issue_title_template: '每日摘要：{{ date }}', label: '每日摘要'},
     pr_review: {title: 'PR Review', description: '检查待审 PR，重点关注测试风险、回归风险和需要人工决策的地方。', execution_mode: 'create_issue', frequency: 'weekdays', time: '10:00', issue_title_template: 'PR Review：{{ date }}', label: 'PR Review'},
@@ -205,6 +205,7 @@
   }
 
   async function loadAutopilots() {
+    abortRunLoads();
     if (!workspaceId) return renderEmpty('当前用户还没有工作区，无法加载自动驾驶。', true);
     showAlert('正在刷新自动驾驶...', 'info', true);
     try {
@@ -216,7 +217,6 @@
       state.agents = normalizeList(results[1]);
       renderAgentOptions();
       renderAutopilots();
-      await loadVisibleRuns();
       hideAlert();
     } catch (error) {
       renderEmpty('加载失败：' + error.message, false);
@@ -225,14 +225,25 @@
   }
 
   async function loadVisibleRuns() {
+    var controller = new AbortController();
+    state.runsAbortController = controller;
     await Promise.all(state.autopilots.map(async function(item) {
       try {
-        state.runsByAutopilot[item.id] = normalizeList(await apiJson('/api/autopilots/' + item.id + '/runs', {headers: headers()}));
+        state.runsByAutopilot[item.id] = normalizeList(await apiJson('/api/autopilots/' + item.id + '/runs', {headers: headers(), signal: controller.signal}));
       } catch (error) {
+        if (error.name === 'AbortError') return;
         state.runsByAutopilot[item.id] = [];
       }
     }));
-    renderAutopilots();
+    if (state.runsAbortController === controller) state.runsAbortController = null;
+    if (!controller.signal.aborted) renderAutopilots();
+  }
+
+  function abortRunLoads() {
+    if (state.runsAbortController) {
+      state.runsAbortController.abort();
+      state.runsAbortController = null;
+    }
   }
 
   function renderAgentOptions() {
@@ -437,7 +448,7 @@
     var item = state.autopilots.find(function(row) { return row.id === itemId; });
     if (!item) return;
     try {
-      await apiJson('/api/autopilots/' + itemId + '/' + (item.status === 'active' ? 'disable' : 'enable') + '/', {method: 'POST', headers: headers()});
+      await apiJson('/api/autopilots/' + itemId + '/' + (item.status === 'active' ? 'disable' : 'enable'), {method: 'POST', headers: headers()});
       showAlert(item.status === 'active' ? '自动驾驶已暂停。' : '自动驾驶已启用。', 'success');
       await loadAutopilots();
     } catch (error) {
@@ -449,7 +460,7 @@
     try {
       state.pendingRuns[itemId] = {status: 'running', triggered_at: new Date().toISOString()};
       renderAutopilots();
-      var run = await apiJson('/api/autopilots/' + itemId + '/trigger/', {
+      var run = await apiJson('/api/autopilots/' + itemId + '/trigger', {
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({mode: 'run_only'})
@@ -466,6 +477,7 @@
 
   async function deleteAutopilot(itemId) {
     if (!confirm('确定删除这个自动驾驶吗？历史运行记录也会随之移除。')) return;
+    abortRunLoads();
     try {
       await apiJson('/api/autopilots/' + itemId, {method: 'DELETE', headers: headers()});
       showAlert('自动驾驶已删除。', 'success');

@@ -2,217 +2,272 @@
 {% block title %}看板 - 波笛智能体{% endblock %}
 
 {% block content %}
-<div data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
-<div class="max-w-full mx-auto">
-  <!-- Header -->
-  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900">Issue 看板</h1>
-      <p class="mt-1 text-sm text-gray-500">拖拽卡片以更改状态</p>
-    </div>
-    <div class="flex flex-wrap gap-2">
-      <a href="/issues?quick_create=1"
-         class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-        <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-        </svg>
-        新建 Issue
-      </a>
-    </div>
-  </div>
-
-  <!-- Board -->
-  <div class="kanban-board">
-    <!-- Backlog -->
-    <div class="kanban-column">
-      <div class="kanban-column-header">
-        <div class="flex items-center gap-2">
-          <span class="flex h-2 w-2 rounded-full bg-gray-400"></span>
-          <h3 class="text-sm font-semibold text-gray-700">待规划</h3>
-          <span class="text-xs text-gray-400 kanban-count"></span>
-        </div>
-        <button class="kanban-add-btn" title="快速创建">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<div id="issue-board-app" data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <div class="max-w-full mx-auto">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Issue 看板</h1>
+        <p class="mt-1 text-sm text-gray-500">按状态查看 Issue；快速创建会直接落到所选列。</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="issue-quick-create" class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" data-default-status="backlog">
+          <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
           </svg>
+          新建 Issue
         </button>
-      </div>
-      <div class="kanban-column-body"
-           hx-get="/api/issues?status=backlog&limit=30&ordering=position"
-           hx-trigger="load"
-           hx-target="this"
-           hx-swap="innerHTML"
-           data-status="backlog">
-        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+        <button type="button" id="issue-refresh" class="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">刷新</button>
       </div>
     </div>
 
-    <!-- Todo -->
-    <div class="kanban-column">
-      <div class="kanban-column-header">
-        <div class="flex items-center gap-2">
-          <span class="flex h-2 w-2 rounded-full bg-blue-400"></span>
-          <h3 class="text-sm font-semibold text-gray-700">待处理</h3>
-          <span class="text-xs text-gray-400 kanban-count"></span>
-        </div>
-        <button class="kanban-add-btn" title="快速创建">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-        </button>
-      </div>
-      <div class="kanban-column-body"
-           hx-get="/api/issues?status=todo&limit=30&ordering=position"
-           hx-trigger="load"
-           hx-target="this"
-           hx-swap="innerHTML"
-           data-status="todo">
-        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
-      </div>
-    </div>
+    <div id="issue-board-alert" class="mb-4 hidden rounded-md border px-4 py-3 text-sm" role="status" aria-live="polite"></div>
 
-    <!-- In Progress -->
-    <div class="kanban-column">
-      <div class="kanban-column-header">
-        <div class="flex items-center gap-2">
-          <span class="flex h-2 w-2 rounded-full bg-yellow-400"></span>
-          <h3 class="text-sm font-semibold text-gray-700">进行中</h3>
-          <span class="text-xs text-gray-400 kanban-count"></span>
+    <div class="kanban-board" id="issue-kanban-board">
+      <div class="kanban-column" data-status="backlog">
+        <div class="kanban-column-header">
+          <div class="flex items-center gap-2"><span class="flex h-2 w-2 rounded-full bg-gray-400"></span><h3 class="text-sm font-semibold text-gray-700">待规划</h3><span class="text-xs text-gray-400 kanban-count">0</span></div>
+          <button type="button" class="kanban-add-btn" title="快速创建" aria-label="在待规划创建 Issue" data-add-status="backlog"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button>
         </div>
-        <button class="kanban-add-btn" title="快速创建">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-        </button>
+        <div class="kanban-column-body" data-column-body="backlog"><div class="px-3 py-8 text-center text-sm text-gray-400">加载中...</div></div>
       </div>
-      <div class="kanban-column-body"
-           hx-get="/api/issues?status=in_progress&limit=30&ordering=position"
-           hx-trigger="load"
-           hx-target="this"
-           hx-swap="innerHTML"
-           data-status="in_progress">
-        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
-      </div>
-    </div>
-
-    <!-- In Review -->
-    <div class="kanban-column">
-      <div class="kanban-column-header">
-        <div class="flex items-center gap-2">
-          <span class="flex h-2 w-2 rounded-full bg-purple-400"></span>
-          <h3 class="text-sm font-semibold text-gray-700">审查中</h3>
-          <span class="text-xs text-gray-400 kanban-count"></span>
+      <div class="kanban-column" data-status="todo">
+        <div class="kanban-column-header">
+          <div class="flex items-center gap-2"><span class="flex h-2 w-2 rounded-full bg-blue-400"></span><h3 class="text-sm font-semibold text-gray-700">待处理</h3><span class="text-xs text-gray-400 kanban-count">0</span></div>
+          <button type="button" class="kanban-add-btn" title="快速创建" aria-label="在待处理创建 Issue" data-add-status="todo"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button>
         </div>
-        <button class="kanban-add-btn" title="快速创建">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-        </button>
+        <div class="kanban-column-body" data-column-body="todo"><div class="px-3 py-8 text-center text-sm text-gray-400">加载中...</div></div>
       </div>
-      <div class="kanban-column-body"
-           hx-get="/api/issues?status=in_review&limit=30&ordering=position"
-           hx-trigger="load"
-           hx-target="this"
-           hx-swap="innerHTML"
-           data-status="in_review">
-        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
-      </div>
-    </div>
-
-    <!-- Done -->
-    <div class="kanban-column">
-      <div class="kanban-column-header">
-        <div class="flex items-center gap-2">
-          <span class="flex h-2 w-2 rounded-full bg-green-400"></span>
-          <h3 class="text-sm font-semibold text-gray-700">已完成</h3>
-          <span class="text-xs text-gray-400 kanban-count"></span>
+      <div class="kanban-column" data-status="in_progress">
+        <div class="kanban-column-header">
+          <div class="flex items-center gap-2"><span class="flex h-2 w-2 rounded-full bg-yellow-400"></span><h3 class="text-sm font-semibold text-gray-700">进行中</h3><span class="text-xs text-gray-400 kanban-count">0</span></div>
+          <button type="button" class="kanban-add-btn" title="快速创建" aria-label="在进行中创建 Issue" data-add-status="in_progress"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button>
         </div>
-        <button class="kanban-add-btn" title="快速创建">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-        </button>
+        <div class="kanban-column-body" data-column-body="in_progress"><div class="px-3 py-8 text-center text-sm text-gray-400">加载中...</div></div>
       </div>
-      <div class="kanban-column-body"
-           hx-get="/api/issues?status=done&limit=30&ordering=-updated_at"
-           hx-trigger="load"
-           hx-target="this"
-           hx-swap="innerHTML"
-           data-status="done">
-        <div class="px-3 py-8 text-center text-sm text-gray-400">加载中<span class="htmx-indicator">...</span></div>
+      <div class="kanban-column" data-status="in_review">
+        <div class="kanban-column-header">
+          <div class="flex items-center gap-2"><span class="flex h-2 w-2 rounded-full bg-purple-400"></span><h3 class="text-sm font-semibold text-gray-700">审查中</h3><span class="text-xs text-gray-400 kanban-count">0</span></div>
+          <button type="button" class="kanban-add-btn" title="快速创建" aria-label="在审查中创建 Issue" data-add-status="in_review"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button>
+        </div>
+        <div class="kanban-column-body" data-column-body="in_review"><div class="px-3 py-8 text-center text-sm text-gray-400">加载中...</div></div>
+      </div>
+      <div class="kanban-column" data-status="done">
+        <div class="kanban-column-header">
+          <div class="flex items-center gap-2"><span class="flex h-2 w-2 rounded-full bg-green-400"></span><h3 class="text-sm font-semibold text-gray-700">已完成</h3><span class="text-xs text-gray-400 kanban-count">0</span></div>
+          <button type="button" class="kanban-add-btn" title="快速创建" aria-label="在已完成创建 Issue" data-add-status="done"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button>
+        </div>
+        <div class="kanban-column-body" data-column-body="done"><div class="px-3 py-8 text-center text-sm text-gray-400">加载中...</div></div>
       </div>
     </div>
   </div>
+</div>
+
+<div id="issue-create-dialog" class="ba-dialog-backdrop hidden" data-ba-dialog hidden role="dialog" aria-modal="true" aria-labelledby="issue-create-title">
+  <form id="issue-create-form" class="ba-dialog-panel" novalidate>
+    {% csrf_token %}
+    <div class="ba-dialog-header">
+      <div>
+        <h2 id="issue-create-title" class="ba-dialog-title">新建 Issue</h2>
+        <p class="ba-dialog-description">创建后会显示在对应看板列中，可继续进入详情补充评论和属性。</p>
+      </div>
+      <button type="button" class="ba-icon-button" aria-label="关闭" data-issue-dialog-close>×</button>
+    </div>
+    <div class="ba-dialog-body space-y-4">
+      <div id="issue-create-error" class="ba-alert ba-alert--error hidden" role="alert"></div>
+      <label class="block">
+        <span class="ba-toolbar-label">标题</span>
+        <input name="title" required class="ba-input mt-1" placeholder="例如：修复登录回归">
+      </label>
+      <label class="block">
+        <span class="ba-toolbar-label">描述</span>
+        <textarea name="description" rows="4" class="ba-textarea mt-1" placeholder="补充背景、复现步骤或验收标准"></textarea>
+      </label>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label class="block">
+          <span class="ba-toolbar-label">状态</span>
+          <select name="status" class="ba-select mt-1">
+            <option value="backlog">待规划</option>
+            <option value="todo">待处理</option>
+            <option value="in_progress">进行中</option>
+            <option value="in_review">审查中</option>
+            <option value="done">已完成</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="ba-toolbar-label">优先级</span>
+          <select name="priority" class="ba-select mt-1">
+            <option value="none">无</option>
+            <option value="low">低</option>
+            <option value="medium">中</option>
+            <option value="high">高</option>
+            <option value="urgent">紧急</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="ba-dialog-footer">
+      <button type="button" class="ba-button ba-button--secondary" data-issue-dialog-close>取消</button>
+      <button type="submit" id="issue-create-submit" class="ba-button ba-button--primary">创建</button>
+    </div>
+  </form>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+(function() {
+  var root = document.getElementById('issue-board-app');
+  if (!root) return;
 
-document.body.addEventListener('htmx:configRequest', function(evt) {
-  var root = document.querySelector('[data-workspace-id]');
-  var workspaceId = root ? root.dataset.workspaceId : '';
-  if (workspaceId) evt.detail.headers['X-Workspace-ID'] = workspaceId;
-});
-// Parse API responses into cards
-document.body.addEventListener('htmx:afterSettle', function(evt) {
-  var target = evt.detail.target;
-  if (!target.classList.contains('kanban-column-body')) return;
+  var workspaceId = root.dataset.workspaceId || '';
+  var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var statuses = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
+  var dialog = document.getElementById('issue-create-dialog');
+  var form = document.getElementById('issue-create-form');
+  var errorBox = document.getElementById('issue-create-error');
+  var submitButton = document.getElementById('issue-create-submit');
+  var alertBox = document.getElementById('issue-board-alert');
+  var lastDialogTrigger = null;
 
-  try {
-    var data = JSON.parse(evt.detail.xhr.responseText);
-    var items = data.results || data || [];
-    if (!Array.isArray(items)) items = [];
-
-    var html = '';
-    items.forEach(function(issue) {
-      var priorityBadge = '';
-      var priorityColor = issue.priority === 'urgent' ? 'red' :
-                          issue.priority === 'high' ? 'orange' :
-                          issue.priority === 'medium' ? 'yellow' : 'green';
-      if (issue.priority && issue.priority !== 'none') {
-        priorityBadge = '<span class="priority-badge priority-' + issue.priority + '">' + issue.priority + '</span>';
-      }
-      html += '<a href="/issues/' + issue.id + '" class="issue-card" hx-boost="true">' +
-        '<div class="issue-card-header">' +
-          '<span class="issue-card-id">#' + (issue.number || '--') + '</span>' +
-          priorityBadge +
-        '</div>' +
-        '<p class="issue-card-title">' + escapeHtml(issue.title || '') + '</p>' +
-        '<div class="issue-card-footer">' +
-          '<span class="issue-card-assignee">' + (issue.assignee_type || '') + '</span>' +
-          '<span class="issue-card-date">' + formatDate(issue.updated_at) + '</span>' +
-        '</div>' +
-      '</a>';
-    });
-
-    if (html === '') {
-      html = '<div class="px-3 py-8 text-center text-sm text-gray-400">暂无 Issues</div>';
-    }
-
-    target.innerHTML = html;
-
-    // Update column count
-    var countEl = target.parentElement.querySelector('.kanban-count');
-    if (countEl) countEl.textContent = items.length;
-  } catch(e) {
-    target.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400">加载失败</div>';
+  function headers(hasBody) {
+    var result = {'Accept': 'application/json', 'X-CSRFToken': csrfToken};
+    if (workspaceId) result['X-Workspace-ID'] = workspaceId;
+    if (hasBody) result['Content-Type'] = 'application/json';
+    return result;
   }
-});
 
-function escapeHtml(str) {
-  var div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+  async function apiJson(url, options) {
+    var opts = options || {};
+    opts.headers = Object.assign(headers(!!opts.body), opts.headers || {});
+    opts.credentials = 'same-origin';
+    var response = await fetch(url, opts);
+    var text = await response.text();
+    var data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error(formatApiError(data) || ('HTTP ' + response.status));
+    return data;
+  }
 
-function formatDate(iso) {
-  if (!iso) return '';
-  var d = new Date(iso);
-  var now = new Date();
-  var diff = now - d;
-  if (diff < 86400000) return d.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
-  return d.toLocaleDateString('zh-CN', {month:'short',day:'numeric'});
-}
+  async function loadBoard() {
+    clearAlert();
+    if (!workspaceId) {
+      showAlert('当前用户没有可用工作区，无法加载 Issue。', 'error');
+      return;
+    }
+    await Promise.all(statuses.map(loadColumn));
+  }
+
+  async function loadColumn(status) {
+    var body = document.querySelector('[data-column-body="' + status + '"]');
+    if (!body) return;
+    body.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400">加载中...</div>';
+    try {
+      var data = await apiJson('/api/issues?status=' + encodeURIComponent(status) + '&limit=30&ordering=' + (status === 'done' ? '-updated_at' : 'position'));
+      renderColumn(status, normalizeList(data));
+    } catch (error) {
+      body.innerHTML = '<div class="px-3 py-8 text-center text-sm text-red-600">加载失败：' + escapeHtml(error.message) + '</div>';
+    }
+  }
+
+  function renderColumn(status, items) {
+    var body = document.querySelector('[data-column-body="' + status + '"]');
+    if (!body) return;
+    if (!items.length) {
+      body.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400">暂无 Issues</div>';
+    } else {
+      body.innerHTML = items.map(renderIssueCard).join('');
+    }
+    var countEl = body.closest('.kanban-column').querySelector('.kanban-count');
+    if (countEl) countEl.textContent = String(items.length);
+  }
+
+  function renderIssueCard(issue) {
+    var priorityBadge = '';
+    if (issue.priority && issue.priority !== 'none') {
+      priorityBadge = '<span class="priority-badge priority-' + escapeAttr(issue.priority) + '">' + escapeHtml(priorityLabel(issue.priority)) + '</span>';
+    }
+    return '<a href="/issues/' + escapeAttr(issue.id) + '/" class="issue-card" hx-boost="true">' +
+      '<div class="issue-card-header"><span class="issue-card-id">#' + escapeHtml(issue.number || '--') + '</span>' + priorityBadge + '</div>' +
+      '<p class="issue-card-title">' + escapeHtml(issue.title || '') + '</p>' +
+      '<div class="issue-card-footer"><span class="issue-card-assignee">' + escapeHtml(issue.assignee_type || '未分配') + '</span><span class="issue-card-date">' + escapeHtml(formatDate(issue.updated_at)) + '</span></div>' +
+    '</a>';
+  }
+
+  function openDialog(status) {
+    lastDialogTrigger = document.activeElement;
+    form.reset();
+    form.status.value = status || 'backlog';
+    form.priority.value = 'none';
+    errorBox.classList.add('hidden');
+    dialog.hidden = false;
+    dialog.classList.remove('hidden');
+    window.setTimeout(function() { form.title.focus(); }, 0);
+  }
+
+  function closeDialog() {
+    if (dialog.hidden) return;
+    dialog.hidden = true;
+    dialog.classList.add('hidden');
+    if (lastDialogTrigger && typeof lastDialogTrigger.focus === 'function') lastDialogTrigger.focus({preventScroll: true});
+  }
+
+  async function submitIssue(event) {
+    event.preventDefault();
+    var title = form.title.value.trim();
+    if (!title) return showFormError('请输入 Issue 标题。');
+    submitButton.disabled = true;
+    submitButton.textContent = '创建中...';
+    try {
+      var payload = {
+        title: title,
+        description: form.description.value.trim(),
+        status: form.status.value,
+        priority: form.priority.value,
+        origin_type: 'quick_create'
+      };
+      var issue = await apiJson('/api/issues', {method: 'POST', body: JSON.stringify(payload)});
+      closeDialog();
+      showAlert('Issue 已创建：#' + (issue.number || '--'), 'success');
+      await loadColumn(issue.status || payload.status);
+    } catch (error) {
+      showFormError(error.message);
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = '创建';
+    }
+  }
+
+  function showFormError(message) {
+    errorBox.textContent = message;
+    errorBox.classList.remove('hidden');
+  }
+
+  function showAlert(message, type) {
+    alertBox.className = 'mb-4 rounded-md border px-4 py-3 text-sm ' + (type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700');
+    alertBox.textContent = message;
+    alertBox.classList.remove('hidden');
+  }
+
+  function clearAlert() { alertBox.classList.add('hidden'); }
+  function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data && data.results) ? data.results : []); }
+  function priorityLabel(value) { return ({urgent:'紧急', high:'高', medium:'中', low:'低'})[value] || value; }
+  function escapeHtml(value) { var div = document.createElement('div'); div.textContent = value == null ? '' : String(value); return div.innerHTML; }
+  function escapeAttr(value) { return escapeHtml(value).replace(/"/g, '&quot;'); }
+  function formatDate(iso) { if (!iso) return ''; var date = new Date(iso); if (Number.isNaN(date.getTime())) return ''; return date.toLocaleDateString('zh-CN', {month:'short', day:'numeric'}); }
+  function formatApiError(data) { if (!data) return ''; if (data.detail) return data.detail; return Object.keys(data).map(function(key) { return key + ': ' + (Array.isArray(data[key]) ? data[key].join('，') : data[key]); }).join('；'); }
+
+  document.getElementById('issue-quick-create').addEventListener('click', function(event) { openDialog(event.currentTarget.dataset.defaultStatus); });
+  document.getElementById('issue-refresh').addEventListener('click', loadBoard);
+  form.addEventListener('submit', submitIssue);
+  document.querySelectorAll('[data-issue-dialog-close]').forEach(function(button) { button.addEventListener('click', closeDialog); });
+  root.addEventListener('click', function(event) {
+    var button = event.target.closest('[data-add-status]');
+    if (button) openDialog(button.dataset.addStatus);
+  });
+  window.addEventListener('ba:escape', closeDialog);
+
+  loadBoard().then(function() {
+    if (new URLSearchParams(window.location.search).get('quick_create') === '1') openDialog('backlog');
+  });
+})();
 </script>
 {% endblock %}

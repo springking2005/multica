@@ -8,12 +8,13 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY, get_user_model
+from django.db.models import Max
 
 from accounts.models import Daemon, Member, PersonalAccessToken, Workspace
 from agents.models import Agent
 from autopilots.models import Autopilot, AutopilotTrigger
 from chat.models import ChatSession
-from inbox.models import Activity
+from inbox.models import Activity, InboxItem
 from issues.models import Issue
 from projects.models import Project
 
@@ -61,9 +62,12 @@ def create_agent(workspace: Workspace, name: str = "E2E Agent") -> Agent:
 
 
 def create_issue(workspace: Workspace, member: Member, **overrides: object) -> Issue:
+    next_number = (
+        Issue.objects.filter(workspace=workspace).aggregate(max_number=Max("number"))["max_number"] or 0
+    ) + 1
     defaults = {
         "workspace": workspace,
-        "number": overrides.pop("number", workspace.issue_counter + 1 or 1),
+        "number": overrides.pop("number", next_number),
         "title": "E2E seeded issue",
         "description": "Seeded issue description",
         "status": Issue.Status.BACKLOG,
@@ -114,6 +118,34 @@ def create_chat_session(workspace: Workspace, member: Member, agent: Agent) -> C
     )
 
 
+
+def create_inbox_item(
+    workspace: Workspace,
+    member: Member,
+    title: str = "E2E Inbox Item",
+    *,
+    body: str = "Inbox item from e2e",
+    issue: Issue | None = None,
+    read: bool = False,
+    archived: bool = False,
+    inbox_type: str = InboxItem.Type.NEW_COMMENT,
+    severity: str = InboxItem.Severity.INFO,
+) -> InboxItem:
+    return InboxItem.objects.create(
+        workspace=workspace,
+        recipient_type=InboxItem.RecipientType.MEMBER,
+        recipient_id=member.user_id,
+        actor_type=InboxItem.ActorType.SYSTEM,
+        actor_id=None,
+        type=inbox_type,
+        severity=severity,
+        issue_id=issue.id if issue else None,
+        title=title,
+        body=body,
+        read=read,
+        archived=archived,
+    )
+
 def create_activity(workspace: Workspace, issue: Issue, member: Member, action: str = "updated") -> Activity:
     return Activity.objects.create(
         workspace=workspace,
@@ -152,6 +184,31 @@ def force_login_context(context, live_server_url: str, user: object, workspace: 
             window.localStorage.setItem('bodiagent_token', 'e2e-session-token');
             window.localStorage.setItem('bodiagent_refresh', 'e2e-refresh-token');
             window.localStorage.setItem('bodiagent_workspace_id', '{workspace.id}');
+        }}"""
+    )
+
+
+
+
+
+def login_context_via_api(context, live_server_url: str, browser_user: BrowserUser) -> None:
+    """Authenticate a BrowserContext against the running HTTP server.
+
+    This is required for ASGI/Daphne browser tests because the WebSocket
+    AuthMiddleware must consume the same session cookie shape emitted by the
+    server under test, regardless of prior imports or session-engine caching.
+    """
+    response = context.request.post(
+        live_server_url + "/api/auth/login",
+        data={"email": browser_user.user.email, "password": "admin123"},
+        headers={"Accept": "application/json"},
+    )
+    assert response.ok, f"ASGI browser login failed: {response.status} {response.text()}"
+    context.add_init_script(
+        f"""() => {{
+            window.localStorage.setItem('bodiagent_token', 'e2e-session-token');
+            window.localStorage.setItem('bodiagent_refresh', 'e2e-refresh-token');
+            window.localStorage.setItem('bodiagent_workspace_id', '{browser_user.workspace.id}');
         }}"""
     )
 

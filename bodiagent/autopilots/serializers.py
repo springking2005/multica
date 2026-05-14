@@ -90,6 +90,9 @@ class AutopilotSerializer(serializers.ModelSerializer):
 
 
 class AutopilotCreateSerializer(serializers.ModelSerializer):
+    created_by_type = serializers.CharField(required=False)
+    created_by_id = serializers.UUIDField(required=False)
+
     class Meta:
         model = Autopilot
         fields = [

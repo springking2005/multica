@@ -2,151 +2,184 @@
 {% block title %}设置 - 波笛智能体{% endblock %}
 
 {% block content %}
-<div data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
-<div class="max-w-2xl mx-auto">
-  <h1 class="text-2xl font-bold text-gray-900 mb-6">个人设置</h1>
-
-  <div class="mb-6">
+<div id="profile-page" class="max-w-2xl mx-auto" data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">个人设置</h1>
+      <p class="mt-1 text-sm text-gray-500">维护个人资料、本地偏好和通知可用性。</p>
+    </div>
     <a href="/settings/tokens/" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" hx-boost="true">
       管理 CLI Token
     </a>
   </div>
 
-  <!-- Profile -->
-  <div class="rounded-lg border border-gray-200 bg-white shadow-sm mb-6">
+  <div id="profile-msg" class="mb-4 hidden rounded-md border px-4 py-3 text-sm" role="status" aria-live="polite"></div>
+
+  <section class="rounded-lg border border-gray-200 bg-white shadow-sm mb-6">
     <div class="border-b border-gray-100 px-6 py-4">
       <h2 class="text-sm font-semibold text-gray-900">个人信息</h2>
+      <p class="mt-1 text-xs text-gray-500">邮箱用于登录，当前不可在此页面修改。</p>
     </div>
-    <form hx-patch="/api/me/"
-          hx-target="#profile-msg"
-          hx-swap="innerHTML"
-          class="px-6 py-4 space-y-4">
+    <form id="profile-form" class="px-6 py-4 space-y-4" novalidate>
       {% csrf_token %}
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">姓名</label>
-        <input type="text" name="name" value="{{ request.user.name }}"
-               class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">
+        <label for="profile-name" class="block text-sm font-medium text-gray-700 mb-1">姓名</label>
+        <input id="profile-name" type="text" name="name" value="{{ request.user.name }}" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
-        <input type="email" name="email" value="{{ request.user.email }}"
-               class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">
+        <label for="profile-email" class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+        <input id="profile-email" type="email" value="{{ request.user.email }}" readonly aria-readonly="true" class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">头像 URL</label>
-        <input type="url" name="avatar_url" value="{{ request.user.avatar_url|default:'' }}"
-               class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none"
-               placeholder="https://...">
+        <label for="profile-avatar-url" class="block text-sm font-medium text-gray-700 mb-1">头像 URL</label>
+        <input id="profile-avatar-url" type="url" name="avatar_url" value="{{ request.user.avatar_url|default:'' }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="https://...">
       </div>
-      <div id="profile-msg"></div>
+      <div>
+        <label for="profile-language" class="block text-sm font-medium text-gray-700 mb-1">语言</label>
+        <select id="profile-language" name="language" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">
+          <option value="zh-hans" {% if request.user.language == 'zh-hans' %}selected{% endif %}>简体中文</option>
+          <option value="en" {% if request.user.language == 'en' %}selected{% endif %}>English</option>
+        </select>
+      </div>
       <div class="flex justify-end">
-        <button type="submit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        <button type="submit" id="profile-submit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
           保存
         </button>
       </div>
     </form>
-  </div>
+  </section>
 
-  <!-- Preferences -->
-  <div class="rounded-lg border border-gray-200 bg-white shadow-sm mb-6">
+  <section class="rounded-lg border border-gray-200 bg-white shadow-sm mb-6">
     <div class="border-b border-gray-100 px-6 py-4">
       <h2 class="text-sm font-semibold text-gray-900">偏好设置</h2>
+      <p class="mt-1 text-xs text-gray-500">主题是浏览器本地偏好，会写入 localStorage。</p>
     </div>
-    <div class="px-6 py-4 space-y-4" x-data="{ theme: localStorage.getItem('theme') || 'system' }">
-      <!-- Language -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">语言</label>
-        <select class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none">
-          <option value="zh-hans">简体中文</option>
-          <option value="en">English</option>
-        </select>
-      </div>
-
-      <!-- Theme -->
+    <div class="px-6 py-4 space-y-4">
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">主题</label>
-        <div class="flex gap-2">
-          <button type="button"
-                  class="rounded-lg border px-4 py-2 text-sm"
-                  :class="theme === 'light' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-700'"
-                  @click="theme = 'light'; localStorage.setItem('theme', 'light'); applyTheme('light')">
-            浅色
-          </button>
-          <button type="button"
-                  class="rounded-lg border px-4 py-2 text-sm"
-                  :class="theme === 'dark' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-700'"
-                  @click="theme = 'dark'; localStorage.setItem('theme', 'dark'); applyTheme('dark')">
-            深色
-          </button>
-          <button type="button"
-                  class="rounded-lg border px-4 py-2 text-sm"
-                  :class="theme === 'system' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-700'"
-                  @click="theme = 'system'; localStorage.setItem('theme', 'system'); applyTheme('system')">
-            跟随系统
-          </button>
+        <div class="flex flex-wrap gap-2" id="theme-buttons">
+          <button type="button" class="rounded-lg border px-4 py-2 text-sm" data-theme-value="light">浅色</button>
+          <button type="button" class="rounded-lg border px-4 py-2 text-sm" data-theme-value="dark">深色</button>
+          <button type="button" class="rounded-lg border px-4 py-2 text-sm" data-theme-value="system">跟随系统</button>
         </div>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- Notification Preferences -->
-  <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+  <section class="rounded-lg border border-gray-200 bg-white shadow-sm">
     <div class="border-b border-gray-100 px-6 py-4">
       <h2 class="text-sm font-semibold text-gray-900">通知偏好</h2>
+      <p id="notification-readonly-note" class="mt-1 text-xs text-gray-500">通知偏好 API 尚未接入本页面；当前仅展示后端默认值，不能在这里保存。</p>
     </div>
-    <div class="px-6 py-4 space-y-3">
+    <div class="px-6 py-4 space-y-3" aria-describedby="notification-readonly-note">
       {% with prefs=request.user.notification_preferences.first %}
       <label class="flex items-center gap-3">
-        <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-               {% if not prefs or prefs.assignments %}checked{% endif %}>
+        <input type="checkbox" disabled aria-disabled="true" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" {% if not prefs or prefs.assignments %}checked{% endif %}>
         <span class="text-sm text-gray-700">Issue 分配通知</span>
       </label>
       <label class="flex items-center gap-3">
-        <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-               {% if not prefs or prefs.statuses %}checked{% endif %}>
+        <input type="checkbox" disabled aria-disabled="true" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" {% if not prefs or prefs.statuses %}checked{% endif %}>
         <span class="text-sm text-gray-700">状态变更通知</span>
       </label>
       <label class="flex items-center gap-3">
-        <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-               {% if not prefs or prefs.comments %}checked{% endif %}>
+        <input type="checkbox" disabled aria-disabled="true" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" {% if not prefs or prefs.comments %}checked{% endif %}>
         <span class="text-sm text-gray-700">评论通知</span>
       </label>
       <label class="flex items-center gap-3">
-        <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-               {% if not prefs or prefs.updates %}checked{% endif %}>
+        <input type="checkbox" disabled aria-disabled="true" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" {% if not prefs or prefs.updates %}checked{% endif %}>
         <span class="text-sm text-gray-700">Issue 更新通知</span>
       </label>
       <label class="flex items-center gap-3">
-        <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-               {% if not prefs or prefs.agent_activity %}checked{% endif %}>
+        <input type="checkbox" disabled aria-disabled="true" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" {% if not prefs or prefs.agent_activity %}checked{% endif %}>
         <span class="text-sm text-gray-700">智能体活动通知</span>
       </label>
       {% endwith %}
     </div>
-  </div>
+  </section>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function applyTheme(theme) {
-  if (theme === 'dark') {
-    document.documentElement.classList.add('dark');
-  } else if (theme === 'light') {
-    document.documentElement.classList.remove('dark');
-  } else {
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }
-}
-
-// Apply saved theme on load
 (function() {
-  var theme = localStorage.getItem('theme') || 'system';
-  applyTheme(theme);
+  var root = document.getElementById('profile-page');
+  if (!root) return;
+
+  var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var form = document.getElementById('profile-form');
+  var submit = document.getElementById('profile-submit');
+  var message = document.getElementById('profile-msg');
+  var themeButtons = Array.prototype.slice.call(document.querySelectorAll('[data-theme-value]'));
+
+  function showMessage(text, type) {
+    message.className = 'mb-4 rounded-md border px-4 py-3 text-sm ' + (type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700');
+    message.textContent = text;
+    message.classList.remove('hidden');
+  }
+
+  async function apiJson(url, options) {
+    var response = await fetch(url, options || {});
+    var text = await response.text();
+    var data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error(formatApiError(data) || ('HTTP ' + response.status));
+    return data;
+  }
+
+  function formatApiError(data) {
+    if (!data) return '';
+    if (data.detail) return data.detail;
+    return Object.keys(data).map(function(key) {
+      return key + ': ' + (Array.isArray(data[key]) ? data[key].join('，') : data[key]);
+    }).join('；');
+  }
+
+  form.addEventListener('submit', async function(event) {
+    event.preventDefault();
+    var name = form.name.value.trim();
+    if (!name) return showMessage('请填写姓名。', 'error');
+    submit.disabled = true;
+    submit.textContent = '保存中...';
+    try {
+      var user = await apiJson('/api/me', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, 'Accept': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({name: name, avatar_url: form.avatar_url.value.trim(), language: form.language.value})
+      });
+      form.name.value = user.name || name;
+      form.avatar_url.value = user.avatar_url || '';
+      form.language.value = user.language || form.language.value;
+      showMessage('个人信息已保存。', 'success');
+    } catch (error) {
+      showMessage('保存失败：' + error.message, 'error');
+    } finally {
+      submit.disabled = false;
+      submit.textContent = '保存';
+    }
+  });
+
+  function applyTheme(theme) {
+    if (theme === 'system') {
+      theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }
+
+  function setThemePreference(theme) {
+    localStorage.setItem('theme', theme);
+    applyTheme(theme);
+    themeButtons.forEach(function(button) {
+      var active = button.dataset.themeValue === theme;
+      button.className = 'rounded-lg border px-4 py-2 text-sm ' + (active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-700');
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  themeButtons.forEach(function(button) {
+    button.addEventListener('click', function() { setThemePreference(button.dataset.themeValue); });
+  });
+
+  setThemePreference(localStorage.getItem('theme') || 'system');
 })();
 </script>
 {% endblock %}
