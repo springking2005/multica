@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import os
+
 os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 from collections.abc import Iterator
 
 import pytest
+from django.conf import settings as django_settings
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
 from e2e.helpers.assertions import collect_console_errors
 from e2e.helpers.data import BrowserUser, create_browser_user, force_login_context
+
+
+@pytest.fixture(scope="session", autouse=True)
+def signed_cookie_sessions():
+    """Avoid DB-backed session contention between Playwright and live_server threads."""
+    django_settings.SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
 
 
 @pytest.fixture(scope="session")

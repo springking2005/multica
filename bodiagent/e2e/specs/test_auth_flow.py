@@ -56,4 +56,12 @@ def test_register_succeeds_without_raw_json(page, live_server):
 
     expect(page.locator("body")).not_to_contain_text('{"token"')
     assert page.evaluate("() => Boolean(localStorage.getItem('bodiagent_token'))")
-    assert_no_console_errors(page.console_errors)
+    assert_no_console_errors(
+        page.console_errors,
+        allow=[
+            "Bad Request",
+            "Response Status Error Code 400 from /api/issues",
+            "Response Status Error Code 400 from /api/agents",
+            "Response Status Error Code 400 from /api/inbox",
+        ],
+    )

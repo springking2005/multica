@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from importlib import import_module
 from uuid import uuid4
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.test import Client
+from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY, get_user_model
 
 from accounts.models import Daemon, Member, PersonalAccessToken, Workspace
 from agents.models import Agent
 from autopilots.models import Autopilot, AutopilotTrigger
 from chat.models import ChatSession
 from inbox.models import Activity
-from issues.models import Comment, Issue
+from issues.models import Issue
 from projects.models import Project
 
 
@@ -133,32 +132,28 @@ def create_cli_token(user: object, name: str = "E2E Token") -> PersonalAccessTok
 
 def force_login_context(context, live_server_url: str, user: object, workspace: Workspace) -> None:
     """Create an authenticated browser state from Django's session cookie."""
-    client = Client()
-    client.force_login(user)
-    cookie = client.cookies[settings.SESSION_COOKIE_NAME]
-    parsed = urlparse(live_server_url)
+    session_store = import_module(settings.SESSION_ENGINE).SessionStore
+    session = session_store()
+    session[SESSION_KEY] = str(user.pk)
+    session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
+    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    session.save()
     context.add_cookies([
         {
             "name": settings.SESSION_COOKIE_NAME,
-            "value": cookie.value,
-            "domain": parsed.hostname or "127.0.0.1",
-            "path": "/",
+            "value": session.session_key,
+            "url": live_server_url,
             "httpOnly": True,
-            "secure": parsed.scheme == "https",
             "sameSite": "Lax",
         }
     ])
-    page = context.new_page()
-    page.goto(live_server_url + "/login/")
-    page.evaluate(
-        """({workspaceId}) => {
+    context.add_init_script(
+        f"""() => {{
             window.localStorage.setItem('bodiagent_token', 'e2e-session-token');
             window.localStorage.setItem('bodiagent_refresh', 'e2e-refresh-token');
-            window.localStorage.setItem('bodiagent_workspace_id', workspaceId);
-        }""",
-        {"workspaceId": str(workspace.id)},
+            window.localStorage.setItem('bodiagent_workspace_id', '{workspace.id}');
+        }}"""
     )
-    page.close()
 
 
 def workspace_headers(workspace: Workspace) -> dict[str, str]:
