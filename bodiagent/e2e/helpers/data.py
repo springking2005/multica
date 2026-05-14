@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urlparse
-from uuid import uuid4
-
 from importlib import import_module
+from uuid import uuid4
 
 from django.conf import settings
 from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY, get_user_model
@@ -16,7 +14,7 @@ from agents.models import Agent
 from autopilots.models import Autopilot, AutopilotTrigger
 from chat.models import ChatSession
 from inbox.models import Activity
-from issues.models import Comment, Issue
+from issues.models import Issue
 from projects.models import Project
 
 
@@ -140,29 +138,22 @@ def force_login_context(context, live_server_url: str, user: object, workspace: 
     session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
     session[HASH_SESSION_KEY] = user.get_session_auth_hash()
     session.save()
-    parsed = urlparse(live_server_url)
     context.add_cookies([
         {
             "name": settings.SESSION_COOKIE_NAME,
             "value": session.session_key,
-            "domain": parsed.hostname or "127.0.0.1",
-            "path": "/",
+            "url": live_server_url,
             "httpOnly": True,
-            "secure": parsed.scheme == "https",
             "sameSite": "Lax",
         }
     ])
-    page = context.new_page()
-    page.goto(live_server_url + "/login/")
-    page.evaluate(
-        """({workspaceId}) => {
+    context.add_init_script(
+        f"""() => {{
             window.localStorage.setItem('bodiagent_token', 'e2e-session-token');
             window.localStorage.setItem('bodiagent_refresh', 'e2e-refresh-token');
-            window.localStorage.setItem('bodiagent_workspace_id', workspaceId);
-        }""",
-        {"workspaceId": str(workspace.id)},
+            window.localStorage.setItem('bodiagent_workspace_id', '{workspace.id}');
+        }}"""
     )
-    page.close()
 
 
 def workspace_headers(workspace: Workspace) -> dict[str, str]:

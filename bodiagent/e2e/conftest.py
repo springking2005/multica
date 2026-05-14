@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
+
 os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 from collections.abc import Iterator
 
-from django.conf import settings as django_settings
 import pytest
+from django.conf import settings as django_settings
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
 from e2e.helpers.assertions import collect_console_errors
