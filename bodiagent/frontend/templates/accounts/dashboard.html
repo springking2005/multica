@@ -22,6 +22,7 @@
     </div>
   </div>
 
+  {% if current_workspace_id %}
   <!-- Quick Stats -->
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4"
        hx-get="/api/issues?limit=1"
@@ -82,6 +83,12 @@
       </div>
     </div>
   </div>
+  {% else %}
+  <div class="rounded-lg border border-blue-100 bg-blue-50 p-5 text-sm text-blue-800">
+    创建或加入工作区后，这里会显示 Issue、智能体和收件箱动态。
+  </div>
+  {% endif %}
+</div>
 </div>
 {% endblock %}
 
