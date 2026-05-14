@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from importlib import import_module
+
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.test import Client
+from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY, get_user_model
 
 from accounts.models import Daemon, Member, PersonalAccessToken, Workspace
 from agents.models import Agent
@@ -133,14 +134,17 @@ def create_cli_token(user: object, name: str = "E2E Token") -> PersonalAccessTok
 
 def force_login_context(context, live_server_url: str, user: object, workspace: Workspace) -> None:
     """Create an authenticated browser state from Django's session cookie."""
-    client = Client()
-    client.force_login(user)
-    cookie = client.cookies[settings.SESSION_COOKIE_NAME]
+    session_store = import_module(settings.SESSION_ENGINE).SessionStore
+    session = session_store()
+    session[SESSION_KEY] = str(user.pk)
+    session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
+    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    session.save()
     parsed = urlparse(live_server_url)
     context.add_cookies([
         {
             "name": settings.SESSION_COOKIE_NAME,
-            "value": cookie.value,
+            "value": session.session_key,
             "domain": parsed.hostname or "127.0.0.1",
             "path": "/",
             "httpOnly": True,
