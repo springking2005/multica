@@ -29,6 +29,6 @@ def test_agents_create_dialog_validation_stays_on_page(page, live_server, browse
     page.locator("textarea[name='custom_env']").fill("{")
     page.locator("#agent-form button[type='submit']").click()
     expect(page.locator("#agent-form")).to_be_visible()
-    expect(page.locator("#agent-alert")).to_be_visible(timeout=10_000)
+    expect(page.locator("#agent-form-error")).to_be_visible(timeout=10_000)
     assert_no_raw_json_page(page)
     assert_no_console_errors(page.console_errors)
