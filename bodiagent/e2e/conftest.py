@@ -11,6 +11,12 @@ from e2e.helpers.assertions import collect_console_errors
 from e2e.helpers.data import BrowserUser, create_browser_user, force_login_context
 
 
+@pytest.fixture(autouse=True)
+def signed_cookie_sessions(settings):
+    """Avoid DB-backed session contention between Playwright and live_server threads."""
+    settings.SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
+
+
 @pytest.fixture(scope="session")
 def browser_type_name() -> str:
     return os.environ.get("BODIAGENT_E2E_BROWSER", "chromium")
