@@ -73,3 +73,31 @@ SENTRY_DSN= docker compose up -d web
 - 镜像推送需要 registry 凭据。
 - SMTP、Sentry 真实验收需要外部服务凭据。
 - daemon 真实 AI CLI 链路需要 A4 提供 token、workspace 和本机 CLI 凭据。
+
+---
+
+## 2026-05-17 Ralph A3/A4 补充验收
+
+### 本轮结论
+
+- **PostgreSQL 初始化/迁移已闭环**：在本机已有 `bodiagent-postgres`（PostgreSQL 17.6）和 `bodiagent-redis`（Redis 8.2.2）容器上创建隔离数据库，`migrate --noinput`、`migrate --check`、`manage.py check` 均通过，最终 public schema 为 47 张表。
+- **Docker 配置可解析，镜像 build 仍受外部 registry 阻塞**：`docker compose config` 通过；`docker compose build` 卡在 `python:3.12-slim` 元数据拉取，Docker Hub `registry-1.docker.io:443` 返回 `connect: connection refused`。这是外部镜像源/网络阻塞，不是 compose 或 Dockerfile 语法错误。
+- **迁移兼容性问题已修复**：`IssueToLabel` 原 UniqueConstraint 名称为 `issue_to_label_pkey`，与 PostgreSQL 自动主键约束名冲突；已改为 `uq_issue_to_label`，并在 PostgreSQL 隔离库中验证迁移通过。
+
+### 关键命令证据
+
+| 命令 | 结果 | 备注 |
+|------|------|------|
+| `docker --version` | 通过 | `Docker version 29.4.2` |
+| `docker compose version` | 通过 | `Docker Compose version v5.1.3` |
+| `docker compose config` | 通过 | compose 配置可解析 |
+| `docker compose build` | 阻塞 | Docker Hub `python:3.12-slim` metadata pull 被拒绝连接 |
+| `POSTGRES_DB=<isolated> ... python3 manage.py migrate --noinput` | 通过 | PostgreSQL 隔离数据库 |
+| `POSTGRES_DB=<isolated> ... python3 manage.py migrate --check` | 通过 | 无未应用 migration |
+| `POSTGRES_DB=<isolated> ... python3 manage.py check` | 通过 | `System check identified no issues` |
+
+### 剩余投产动作
+
+1. 在可访问 Docker Hub 或配置内网镜像源后重跑 `docker compose build && docker compose up -d web`。
+2. 真实生产环境仍需补 SMTP、Sentry、域名、TLS、强随机 `DJANGO_SECRET_KEY` 与 registry 推送凭据。
+3. 若生产必须离线构建，应把 `python:3.12-slim` 替换为企业镜像源或提前同步到私有 registry。

@@ -244,7 +244,7 @@ class IssueToLabel(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["issue", "label"],
-                name="issue_to_label_pkey",
+                name="uq_issue_to_label",
             ),
         ]
 

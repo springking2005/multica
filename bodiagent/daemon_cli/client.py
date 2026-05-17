@@ -60,8 +60,8 @@ class DaemonClient:
         if self._http is None:
             self._http = httpx.AsyncClient(
                 base_url=self.server_url,
-                headers=self._auth_headers(),
                 timeout=self.timeout,
+                trust_env=False,
             )
         return self._http
 
@@ -138,7 +138,12 @@ class DaemonClient:
         resp = await self.http.post(f"/api/daemon/tasks/{task_id}/progress", json=payload)
         resp.raise_for_status()
 
-    async def task_complete(self, task_id: UUID, summary: str = "", artifacts: list[dict[str, Any]] | None = None) -> None:
+    async def task_complete(
+        self,
+        task_id: UUID,
+        summary: str = "",
+        artifacts: list[dict[str, Any]] | None = None,
+    ) -> None:
         """POST /api/daemon/tasks/{task_id}/complete"""
         resp = await self.http.post(
             f"/api/daemon/tasks/{task_id}/complete",
@@ -317,7 +322,12 @@ class DaemonClient:
 
                 if event_type == "daemon:heartbeat_ack":
                     # Process pending actions from server
-                    for key in ("pending_update", "pending_model_list", "pending_local_skills", "pending_local_skill_import"):
+                    for key in (
+                        "pending_update",
+                        "pending_model_list",
+                        "pending_local_skills",
+                        "pending_local_skill_import",
+                    ):
                         if key in payload and payload[key] is not None:
                             await self._pending_actions.put({"action": key, "data": payload[key]})
                 elif event_type == "daemon:task_available":

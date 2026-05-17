@@ -214,6 +214,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='issuetolabel',
-            constraint=models.UniqueConstraint(fields=('issue', 'label'), name='issue_to_label_pkey'),
+            constraint=models.UniqueConstraint(fields=('issue', 'label'), name='uq_issue_to_label'),
         ),
     ]

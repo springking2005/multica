@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 try:
     from .base import Event, Provider
@@ -32,7 +33,7 @@ class ClaudeProvider(Provider):
         custom_args: list[str] | None = None,
         mcp_config: dict[str, Any] | None = None,
     ) -> AsyncIterator[Event]:
-        args = [self.executable, "-p", prompt, "--output-format", "stream-json", "--input-format", "stream-json"]
+        args = [self.executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
         if model:
             args.extend(["--model", model])
         if system_prompt:
@@ -85,8 +86,10 @@ async def _parse_claude_stream(proc: asyncio.subprocess.Process) -> AsyncIterato
 
         event_type = data.get("type", "")
         if event_type == "assistant":
-            # Content block delta events
-            content_blocks = data.get("content", [])
+            # Claude Code stream-json v2 nests assistant messages under
+            # ``message.content``; older builds used top-level ``content``.
+            message = data.get("message") if isinstance(data.get("message"), dict) else {}
+            content_blocks = message.get("content", data.get("content", []))
             for block in content_blocks:
                 block_type = block.get("type", "")
                 if block_type == "text":
@@ -107,7 +110,7 @@ async def _parse_claude_stream(proc: asyncio.subprocess.Process) -> AsyncIterato
         elif event_type == "error":
             yield Event(type="error", content=data.get("error", data.get("message", "unknown error")))
         elif event_type == "result":
-            # Final result marker — emit usage as a status event
+            # Final result marker — emit usage as a status event.
             usage = data.get("usage", {})
             yield Event(
                 type="status",
@@ -129,6 +132,6 @@ async def _terminate_process(proc: asyncio.subprocess.Process) -> None:
     proc.terminate()
     try:
         await asyncio.wait_for(proc.wait(), timeout=5)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.wait()

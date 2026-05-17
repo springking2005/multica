@@ -60,7 +60,7 @@ urlpatterns = [
     ),
     path(
         "daemon/tasks/<uuid:task_id>/usage",
-        TaskUsageViewSet.as_view({"post": "submit"}),
+        DaemonTaskLifecycleView.as_view({"post": "post_usage"}),
         name="daemon-task-usage",
     ),
     path(

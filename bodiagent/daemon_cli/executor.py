@@ -8,28 +8,23 @@ complete/fail.
 from __future__ import annotations
 
 import asyncio
-import json
+import contextlib
 import logging
-import os
-import traceback
-from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
 try:
+    from .cleanup import mark_cancelled, mark_completed, mark_failed, mark_task_dir
     from .client import DaemonClient
     from .config import DaemonConfig
-    from .cleanup import mark_cancelled, mark_completed, mark_failed, mark_task_dir
     from .git_ops import create_worktree, reuse_worktree
     from .providers import detect_providers, get_provider
-    from .providers.base import Provider
 except ImportError:
+    from cleanup import mark_cancelled, mark_completed, mark_failed, mark_task_dir  # type: ignore[no-redef]
     from client import DaemonClient  # type: ignore[no-redef]
     from config import DaemonConfig  # type: ignore[no-redef]
-    from cleanup import mark_cancelled, mark_completed, mark_failed, mark_task_dir  # type: ignore[no-redef]
     from git_ops import create_worktree, reuse_worktree  # type: ignore[no-redef]
     from providers import detect_providers, get_provider  # type: ignore[no-redef]
-    from providers.base import Provider  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +33,7 @@ HEARTBEAT_FAIL_THRESHOLD = 5
 CANCEL_CHECK_INTERVAL = 1.0
 
 
-class TaskCancelled(RuntimeError):
+class TaskCancelled(RuntimeError):  # noqa: N818
     """Raised when the server marks a running task as cancelled."""
 
 
@@ -326,9 +321,12 @@ class TaskExecutor:
             )
             if cancel_watch_task in done:
                 next_event.cancel()
+                with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+                    await next_event
                 aclose = getattr(iterator, "aclose", None)
                 if aclose:
-                    await aclose()
+                    with contextlib.suppress(RuntimeError):
+                        await aclose()
                 cancel_watch_task.result()
             try:
                 yield next_event.result()

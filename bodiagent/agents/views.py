@@ -5,11 +5,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from django.db import models
-from django.db.models import Q, QuerySet
+from django.db.models import QuerySet
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -26,7 +26,6 @@ from .models import (
     TaskUsageDaily,
 )
 from .serializers import (
-    AgentArchiveSerializer,
     AgentCreateSerializer,
     AgentSerializer,
     AgentUpdateSerializer,
@@ -36,7 +35,6 @@ from .serializers import (
     SkillFileSerializer,
     SkillImportSerializer,
     SkillSerializer,
-    TaskCancelSerializer,
     TaskClaimSerializer,
     TaskCompleteSerializer,
     TaskFailSerializer,
@@ -472,6 +470,26 @@ class DaemonTaskLifecycleView(viewsets.ViewSet):
             )
         TaskMessage.objects.bulk_create(created)
         return Response({"ok": True, "count": len(created)})
+
+    def post_usage(self, request, task_id: UUID):
+        task = self.get_task(task_id)
+        provider = request.data.get("provider")
+        model = request.data.get("model") or "unknown"
+        if not provider:
+            raise ValidationError({"provider": "This field is required."})
+        usage, _ = TaskUsage.objects.update_or_create(
+            task=task,
+            provider=provider,
+            model=model,
+            defaults={
+                "input_tokens": request.data.get("input_tokens", 0),
+                "output_tokens": request.data.get("output_tokens", 0),
+                "cache_read_tokens": request.data.get("cache_read_tokens", 0),
+                "cache_write_tokens": request.data.get("cache_write_tokens", 0),
+                "cost": request.data.get("cost", 0.0),
+            },
+        )
+        return Response(TaskUsageSerializer(usage).data, status=status.HTTP_201_CREATED)
 
 
 # ── SkillViewSet ───────────────────────────────────────────────────────

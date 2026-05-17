@@ -29,9 +29,9 @@ class TestAgentTaskLifecycle:
     @pytest.fixture(autouse=True)
     def setup(self, db):
         from django.contrib.auth import get_user_model
-        User = get_user_model()
+        user_model = get_user_model()
 
-        self.user = User.objects.create_user(email="agenthost@example.com", name="Agent Host")
+        self.user = user_model.objects.create_user(email="agenthost@example.com", name="Agent Host")
         self.workspace = Workspace.objects.create(name="Agent WS", slug="agent-ws", issue_prefix="BOT")
         Member.objects.create(workspace=self.workspace, user=self.user, role=Member.ROLE_OWNER)
         self.daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="bot-daemon")
@@ -81,7 +81,6 @@ class TestAgentTaskLifecycle:
         )
 
         # Claim via daemon endpoint (DaemonControlView — AllowAny, works correctly)
-        from django.utils import timezone
         claim_resp = APIClient().post(
             "/api/daemon/tasks/claim",
             {"daemon_id": str(self.daemon.id), "session_id": "session-1", "work_dir": "/tmp/bot"},
@@ -131,6 +130,20 @@ class TestAgentTaskLifecycle:
         assert task.completed_at is not None
         assert task.result == {"summary": "Done"}
         assert task.messages.count() == 2
+
+        usage_resp = APIClient().post(
+            f"/api/daemon/tasks/{task.id}/usage",
+            {
+                "task_id": str(task.id),
+                "provider": "fake",
+                "model": "fake-model",
+                "input_tokens": 10,
+                "output_tokens": 2,
+            },
+            format="json",
+        )
+        assert usage_resp.status_code == 201, usage_resp.data
+        assert usage_resp.data["input_tokens"] == 10
 
     def test_task_failure_flow(self):
         """Task lifecycle ending in failure with failure_reason."""

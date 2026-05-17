@@ -55,3 +55,38 @@ async def test_progress_and_messages_match_server_schema():
     )
     assert requests[1].url.path.endswith(f"/api/daemon/tasks/{task_id}/messages")
     assert requests[1].content == b'{"messages":[{"content":"hello","seq":1,"type":"text"}]}'
+
+
+@pytest.mark.asyncio
+async def test_client_ignores_environment_proxy_urls(monkeypatch):
+    monkeypatch.setenv("HTTP_PROXY", "socks://127.0.0.1:7897/")
+    monkeypatch.setenv("HTTPS_PROXY", "socks://127.0.0.1:7897/")
+    monkeypatch.setenv("ALL_PROXY", "socks://127.0.0.1:7897/")
+
+    client = DaemonClient("http://server.test", "token", uuid.uuid4())
+    try:
+        assert client.http is not None
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_register_does_not_send_bearer_header_for_daemon_token():
+    seen_headers = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_headers.update(request.headers)
+        return httpx.Response(201, json={"id": str(uuid.uuid4())})
+
+    client = DaemonClient("http://server.test", "mdt_daemon_token", uuid.uuid4())
+    client._http = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="http://server.test",
+    )
+
+    try:
+        await client.register("device", ["claude"])
+    finally:
+        await client.close()
+
+    assert "authorization" not in seen_headers
