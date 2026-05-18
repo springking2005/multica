@@ -1,0 +1,137 @@
+<div id="workspace-dialog" class="ba-dialog-backdrop hidden" data-ba-dialog hidden role="dialog" aria-modal="true" aria-labelledby="workspace-dialog-title" aria-describedby="workspace-dialog-description">
+  <form id="workspace-form" class="ba-dialog-panel" novalidate>
+    {% csrf_token %}
+    <div class="ba-dialog-header">
+      <div>
+        <h2 id="workspace-dialog-title" class="ba-dialog-title">创建工作区</h2>
+        <p id="workspace-dialog-description" class="ba-dialog-description">创建工作区后，就可以创建项目、Issue，并邀请团队成员协作。</p>
+      </div>
+      <button type="button" class="ba-icon-button" aria-label="关闭" onclick="closeWorkspaceDialog()" data-ba-dialog-close>×</button>
+    </div>
+    <div class="ba-dialog-body space-y-4">
+      <div id="workspace-form-error" class="ba-alert ba-alert--error hidden" role="alert"></div>
+      <label class="block">
+        <span class="ba-toolbar-label">工作区名称</span>
+        <input id="workspace-name-input" name="name" required class="ba-input mt-1" placeholder="例如：我的团队">
+      </label>
+      <label class="block">
+        <span class="ba-toolbar-label">访问标识</span>
+        <input id="workspace-slug-input" name="slug" required class="ba-input mt-1" placeholder="例如：my-team" pattern="[a-z0-9-]+">
+        <span class="mt-1 block text-xs text-gray-500">只能使用小写字母、数字和短横线。</span>
+      </label>
+      <label class="block">
+        <span class="ba-toolbar-label">描述（可选）</span>
+        <textarea name="description" rows="3" class="ba-textarea mt-1" placeholder="这个工作区用于什么团队或项目？"></textarea>
+      </label>
+    </div>
+    <div class="ba-dialog-footer">
+      <button type="button" class="ba-button ba-button--secondary" onclick="closeWorkspaceDialog()" data-ba-dialog-close>取消</button>
+      <button type="submit" id="workspace-submit-button" class="ba-button ba-button--primary">创建工作区</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function() {
+  var form = document.getElementById('workspace-form');
+  if (!form || form.dataset.bound === 'true') return;
+  form.dataset.bound = 'true';
+  var nameInput = document.getElementById('workspace-name-input');
+  var slugInput = document.getElementById('workspace-slug-input');
+  var errorBox = document.getElementById('workspace-form-error');
+  var submitButton = document.getElementById('workspace-submit-button');
+  var slugEdited = false;
+
+  function csrfToken() {
+    return (form.querySelector('input[name="csrfmiddlewaretoken"]') || {}).value ||
+      (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  }
+
+  function slugify(value) {
+    var slug = String(value || '').toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-{2,}/g, '-');
+    return slug || ('workspace-' + Date.now().toString(36));
+  }
+
+  function showError(message) {
+    errorBox.textContent = message || '创建工作区失败，请稍后重试。';
+    errorBox.classList.remove('hidden');
+  }
+
+  function formatApiError(data) {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    if (data.detail) return data.detail;
+    return Object.keys(data).map(function(key) {
+      var value = data[key];
+      return key + ': ' + (Array.isArray(value) ? value.join('，') : String(value));
+    }).join('；');
+  }
+
+  nameInput.addEventListener('input', function() {
+    if (!slugEdited) slugInput.value = slugify(nameInput.value);
+  });
+  slugInput.addEventListener('input', function() {
+    slugEdited = true;
+    slugInput.value = slugify(slugInput.value);
+  });
+
+  form.addEventListener('submit', async function(event) {
+    event.preventDefault();
+    errorBox.classList.add('hidden');
+    var name = nameInput.value.trim();
+    var slug = slugify(slugInput.value || name);
+    if (!name) return showError('请输入工作区名称。');
+    if (!slug) return showError('请输入访问标识。');
+    submitButton.disabled = true;
+    submitButton.textContent = '创建中...';
+    try {
+      var response = await fetch('/api/workspaces/', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken()
+        },
+        body: JSON.stringify({
+          name: name,
+          slug: slug,
+          description: form.description.value.trim()
+        })
+      });
+      var text = await response.text();
+      var data = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(formatApiError(data) || ('HTTP ' + response.status));
+      window.location.href = '/dashboard/';
+    } catch (error) {
+      showError(error.message);
+      submitButton.disabled = false;
+      submitButton.textContent = '创建工作区';
+    }
+  });
+  window.openWorkspaceDialog = function() {
+    var dialog = document.getElementById('workspace-dialog');
+    if (!dialog || !form) return;
+    slugEdited = false;
+    form.reset();
+    errorBox.classList.add('hidden');
+    submitButton.disabled = false;
+    submitButton.textContent = '创建工作区';
+    dialog.hidden = false;
+    dialog.classList.remove('hidden');
+    window.setTimeout(function() { nameInput.focus(); }, 0);
+  };
+
+  window.closeWorkspaceDialog = function() {
+    var dialog = document.getElementById('workspace-dialog');
+    if (!dialog || dialog.hidden) return;
+    dialog.hidden = true;
+    dialog.classList.add('hidden');
+  };
+
+  window.addEventListener('ba:escape', window.closeWorkspaceDialog);
+})();
+</script>

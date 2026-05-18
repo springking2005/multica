@@ -10,7 +10,18 @@
       <h1 class="text-2xl font-bold text-gray-900">你好, {{ request.user.name|default:request.user.email }}</h1>
       <p class="mt-1 text-sm text-gray-500">欢迎回到波笛智能体</p>
     </div>
-    <div class="flex gap-2">
+    <div class="flex flex-wrap gap-2">
+      <button type="button"
+              class="inline-flex items-center rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+              onclick="openWorkspaceDialog()"
+              data-ba-dialog-open>
+        创建工作区
+      </button>
+      <a href="/projects/?quick_create=1"
+         class="inline-flex items-center rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+         hx-boost="true">
+        创建项目
+      </a>
       <a href="/issues?quick_create=1"
          class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
          hx-boost="true">
@@ -65,11 +76,18 @@
   </div>
   {% else %}
   <div class="rounded-lg border border-blue-100 bg-blue-50 p-5 text-sm text-blue-800">
-    创建或加入工作区后，这里会显示 Issue、智能体和收件箱动态。
+    <div class="font-medium">创建或加入工作区后，这里会显示 Issue、智能体和收件箱动态。</div>
+    <button type="button"
+            class="mt-4 inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            onclick="openWorkspaceDialog()"
+            data-ba-dialog-open>
+      创建工作区
+    </button>
   </div>
   {% endif %}
 </div>
 </div>
+{% include "includes/workspace_create_dialog.html" %}
 {% endblock %}
 
 {% block scripts %}

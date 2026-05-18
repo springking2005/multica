@@ -11,7 +11,11 @@
     </div>
     <div class="ba-page-actions">
       <span id="project-count" class="ba-badge ba-badge--neutral">0 个项目</span>
+      {% if current_workspace_id %}
       <button type="button" class="ba-button ba-button--primary" onclick="openProjectForm()" data-ba-dialog-open>新建项目</button>
+      {% else %}
+      <button type="button" class="ba-button ba-button--primary" onclick="openWorkspaceDialog()" data-ba-dialog-open>创建工作区</button>
+      {% endif %}
     </div>
   </header>
 
@@ -52,6 +56,7 @@
     </div>
   </div>
 </div>
+{% include "includes/workspace_create_dialog.html" %}
 
 <div id="project-dialog" class="ba-dialog-backdrop hidden" data-ba-dialog hidden role="dialog" aria-modal="true" aria-labelledby="project-dialog-title" aria-describedby="project-dialog-description">
   <form id="project-form" class="ba-dialog-panel" novalidate>
@@ -138,6 +143,9 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   window.addEventListener('ba:escape', closeProjectDialog);
   loadProjects();
+  if (projectWorkspaceId && new URLSearchParams(window.location.search).get('quick_create') === '1') {
+    window.setTimeout(function() { openProjectForm(); }, 0);
+  }
 });
 
 function projectHeaders() {
@@ -148,7 +156,7 @@ async function loadProjects() {
   hideProjectAlert();
   if (!projectWorkspaceId) {
     updateProjectCount(0, 0);
-    return renderProjectEmpty('缺少工作区', '当前用户还没有工作区，无法加载项目。', false);
+    return renderProjectEmpty('缺少工作区', '请先创建工作区，然后就可以创建项目。', false, true);
   }
   renderProjectLoading();
   try {
@@ -209,11 +217,12 @@ function renderProjectLoading() {
   document.getElementById('project-surface').innerHTML = '<div class="ba-empty-state"><div class="ba-empty-state-icon">…</div><div class="ba-empty-state-title">正在加载项目</div><div class="ba-empty-state-body">正在读取工作区项目列表。</div></div>';
 }
 
-function renderProjectEmpty(title, body, showCreate) {
+function renderProjectEmpty(title, body, showCreate, showWorkspaceCreate) {
   document.getElementById('project-surface').innerHTML = '<div class="ba-empty-state">' +
     '<div class="ba-empty-state-icon">📁</div>' +
     '<div class="ba-empty-state-title">' + escapeHtml(title) + '</div>' +
     '<div class="ba-empty-state-body">' + escapeHtml(body) + '</div>' +
+    (showWorkspaceCreate ? '<div class="mt-3"><button type="button" class="ba-button ba-button--primary" onclick="openWorkspaceDialog()" data-ba-dialog-open>创建工作区</button></div>' : '') +
     (showCreate ? '<div class="mt-3"><button type="button" class="ba-button ba-button--primary" onclick="openProjectForm()" data-ba-dialog-open>新建项目</button></div>' : '') +
   '</div>';
 }
