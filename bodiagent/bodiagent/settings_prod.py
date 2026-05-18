@@ -1,6 +1,6 @@
+import logging
 import os
 import sys
-import logging
 
 import structlog
 
@@ -117,12 +117,18 @@ LOGGING = {
 
 # Security
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))
+SECURE_SSL_REDIRECT = _bool_env("SECURE_SSL_REDIRECT", True)
+SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", SECURE_SSL_REDIRECT)
+CSRF_COOKIE_SECURE = _bool_env("CSRF_COOKIE_SECURE", SECURE_SSL_REDIRECT)
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000" if SECURE_SSL_REDIRECT else "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = _bool_env("SECURE_HSTS_INCLUDE_SUBDOMAINS", True)
 SECURE_HSTS_PRELOAD = _bool_env("SECURE_HSTS_PRELOAD", False)
-SECURE_SSL_REDIRECT = _bool_env("SECURE_SSL_REDIRECT", True)
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False
 X_FRAME_OPTIONS = "DENY"
+
+# The production image is commonly run directly by ASGI on port 8000 during
+# smoke testing and small deployments.  Serve collected/staticfinder assets in
+# that topology so login pages do not emit missing CSS/MIME errors when no
+# reverse proxy is configured for /static/.
+BODIAGENT_SERVE_STATIC = _bool_env("BODIAGENT_SERVE_STATIC", True)

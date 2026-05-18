@@ -54,4 +54,4 @@ def test_frontend_crud_pages_require_login(path):
     response = Client().get(path)
 
     assert response.status_code == 302
-    assert response["Location"].startswith("/accounts/login/")
+    assert response["Location"].startswith("/login/")

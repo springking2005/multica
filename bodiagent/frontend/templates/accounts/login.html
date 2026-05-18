@@ -14,18 +14,49 @@
     <p class="text-center mt-4 text-sm text-gray-500">还没有账号？<a href="/register" class="text-blue-600">注册</a></p>
 </div>
 <script>
+function handleLoginResponse(data) {
+    if (!data || !data.token) return false;
+    localStorage.setItem('bodiagent_token', data.token);
+    localStorage.setItem('bodiagent_refresh', data.refresh);
+    window.location.href = '/dashboard/';
+    return true;
+}
+
 document.body.addEventListener('htmx:afterRequest', function(evt) {
     if (evt.detail.elt.id !== 'login-form') return;
     if (evt.detail.xhr.status === 200) {
         try {
-            var data = JSON.parse(evt.detail.xhr.responseText);
-            if (data.token) {
-                localStorage.setItem('bodiagent_token', data.token);
-                localStorage.setItem('bodiagent_refresh', data.refresh);
-                window.location.href = '/dashboard/';
-            }
-        } catch(e) {}
+            handleLoginResponse(JSON.parse(evt.detail.xhr.responseText));
+        } catch(e) {
+            document.getElementById('error').textContent = '登录响应无效';
+        }
     }
+});
+
+document.getElementById('login-form').addEventListener('submit', function(evt) {
+    if (window.htmx) return;
+    evt.preventDefault();
+    var form = evt.currentTarget;
+    var error = document.getElementById('error');
+    var csrf = form.querySelector('input[name="csrfmiddlewaretoken"]').value;
+    fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        credentials: 'same-origin',
+        headers: { 'X-CSRFToken': csrf }
+    })
+        .then(function(response) {
+            return response.json().then(function(data) {
+                if (!response.ok) throw data;
+                return data;
+            });
+        })
+        .then(function(data) {
+            if (!handleLoginResponse(data)) error.textContent = '登录响应无效';
+        })
+        .catch(function(data) {
+            error.textContent = (data && (data.detail || data.non_field_errors)) || '登录失败，请检查邮箱和密码';
+        });
 });
 </script>
 {% endblock %}

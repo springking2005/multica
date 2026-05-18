@@ -6,11 +6,8 @@ request-response cycle: page load → credentials POST → session cookie → re
 opening a browser.
 """
 
-from unittest.mock import patch
-
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import Client
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
@@ -282,7 +279,7 @@ class TestFullManualLoginFlow:
         # Step 2 — submit form-encoded (exactly like the HTML form + hx-post)
         r2 = client.post(
             "/api/auth/login",
-            f"email=test@bodiagentteam.com&password=testpass123",
+            "email=test@bodiagentteam.com&password=testpass123",
             content_type="application/x-www-form-urlencoded",
             HTTP_X_CSRFTOKEN=csrf.value if hasattr(csrf, "value") else csrf,
         )
@@ -444,3 +441,14 @@ class TestAuthResponseContract:
         r = _login_api(client, "test@bodiagentteam.com", "testpass123")
         assert isinstance(r.json()["refresh"], str)
         assert len(r.json()["refresh"]) > 0
+
+
+def test_login_page_has_non_htmx_fallback_script(client):
+    """If HTMX fails to load, the login form must not submit as plain HTML."""
+    response = client.get("/login/")
+    content = response.content.decode()
+
+    assert 'id="login-form"' in content
+    assert "preventDefault" in content
+    assert "fetch(form.action" in content
+    assert "credentials: 'same-origin'" in content
