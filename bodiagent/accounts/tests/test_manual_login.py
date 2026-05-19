@@ -233,8 +233,21 @@ class TestFullManualLoginFlow:
         assert "/dashboard/" in content
         # JS listener must use evt.detail.elt (trigger element), not
         # evt.detail.target (swap target = #error div).  See bugfix-auth-redirect.md.
-        assert "evt.detail.elt.id" in content
-        assert "evt.detail.elt.id !== 'login-form'" in content
+        assert "isLoginFormRequest" in content
+        assert "requestElt.id === 'login-form'" in content
+
+    def test_login_form_handles_htmx_error_responses(self, client):
+        """HTMX does not swap 4xx responses by default; JS must show API errors."""
+        r = client.get("/login/")
+        content = r.content.decode()
+
+        assert 'id="error"' in content
+        assert 'role="alert"' in content
+        assert "htmx:beforeSwap" in content
+        assert "evt.detail.shouldSwap = false" in content
+        assert "extractLoginError" in content
+        assert "non_field_errors" in content
+        assert "showLoginError(extractLoginError(data))" in content
 
     def test_complete_login_json_flow(self, client):
         """Full flow using JSON content-type (API consumers, daemon CLI)."""
