@@ -72,14 +72,19 @@ function ProjectRow({ project }: { project: Project }) {
   );
 
   return (
-    <div className="group/row flex h-11 items-center gap-2 px-5 text-sm transition-colors hover:bg-accent/40">
+    <div
+      className="group/row flex h-11 items-center gap-2 px-5 text-sm transition-colors hover:bg-accent/40"
+      data-testid={`project-row-${project.id}`}
+    >
       {/* Icon + Name (navigates to detail) */}
       <AppLink
         href={wsPaths.projectDetail(project.id)}
         className="flex min-w-0 flex-1 items-center gap-2"
       >
         <ProjectIcon project={project} size="md" />
-        <span className="min-w-0 flex-1 truncate font-medium">{project.title}</span>
+        <span className="min-w-0 flex-1 truncate font-medium" data-testid="project-row-title">
+          {project.title}
+        </span>
       </AppLink>
 
       {/* Priority — dropdown */}
@@ -88,7 +93,12 @@ function ProjectRow({ project }: { project: Project }) {
           render={
             <button type="button" className="flex w-24 items-center justify-center gap-1 shrink-0 rounded px-1 py-0.5 hover:bg-accent/60 transition-colors cursor-pointer">
               <PriorityIcon priority={project.priority} />
-              <span className={cn("text-xs", priorityCfg.color)}>{priorityLabels[project.priority]}</span>
+              <span
+                className={cn("text-xs", priorityCfg.color)}
+                data-testid="project-row-priority"
+              >
+                {priorityLabels[project.priority]}
+              </span>
             </button>
           }
         />
@@ -107,10 +117,15 @@ function ProjectRow({ project }: { project: Project }) {
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <button type="button" className={cn(
-              "inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium shrink-0 w-28 justify-center cursor-pointer hover:opacity-80 transition-opacity",
-              statusCfg.badgeBg, statusCfg.badgeText,
-            )}>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium shrink-0 w-28 justify-center cursor-pointer hover:opacity-80 transition-opacity",
+                statusCfg.badgeBg,
+                statusCfg.badgeText,
+              )}
+              data-testid="project-row-status"
+            >
               {statusLabels[project.status]}
             </button>
           }
@@ -242,7 +257,12 @@ export function ProjectsPage() {
           <FolderKanban className="h-4 w-4 text-muted-foreground" />
           <h1 className="text-sm font-medium">{t(($) => $.page.title)}</h1>
           {!isLoading && projects.length > 0 && (
-            <span className="text-xs text-muted-foreground tabular-nums">{projects.length}</span>
+            <span
+              className="text-xs text-muted-foreground tabular-nums"
+              data-testid="projects-count"
+            >
+              {projects.length}
+            </span>
           )}
         </div>
         <Button size="sm" variant="outline" onClick={openCreateProject}>

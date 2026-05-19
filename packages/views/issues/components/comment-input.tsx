@@ -58,6 +58,7 @@ function CommentInput({ issueId, onSubmit }: CommentInputProps) {
   return (
     <div
       {...dropZoneProps}
+      data-testid="comment-input"
       className={cn(
         "relative flex flex-col rounded-lg bg-card pb-8 ring-1 ring-border",
         isExpanded ? "h-[70vh]" : "max-h-56",
@@ -84,6 +85,7 @@ function CommentInput({ issueId, onSubmit }: CommentInputProps) {
                   setIsExpanded((v) => !v);
                   editorRef.current?.focus();
                 }}
+                aria-label={isExpanded ? t(($) => $.comment.collapse_tooltip) : t(($) => $.comment.expand_tooltip)}
                 className="rounded-sm p-1.5 text-muted-foreground opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
               >
                 {isExpanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
@@ -98,6 +100,7 @@ function CommentInput({ issueId, onSubmit }: CommentInputProps) {
         />
         <Button
           size="icon-sm"
+          aria-label={t(($) => $.comment.submit)}
           disabled={isEmpty || submitting}
           onClick={handleSubmit}
         >

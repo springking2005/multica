@@ -194,8 +194,9 @@ export function WorkspaceTab() {
         <Card>
           <CardContent className="space-y-3">
             <div>
-              <Label className="text-xs text-muted-foreground">{t(($) => $.workspace.name_label)}</Label>
+              <Label htmlFor="workspace-name" className="text-xs text-muted-foreground">{t(($) => $.workspace.name_label)}</Label>
               <Input
+                id="workspace-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -204,8 +205,9 @@ export function WorkspaceTab() {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">{t(($) => $.workspace.description_label)}</Label>
+              <Label htmlFor="workspace-description" className="text-xs text-muted-foreground">{t(($) => $.workspace.description_label)}</Label>
               <Textarea
+                id="workspace-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
@@ -215,8 +217,9 @@ export function WorkspaceTab() {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">{t(($) => $.workspace.context_label)}</Label>
+              <Label htmlFor="workspace-context" className="text-xs text-muted-foreground">{t(($) => $.workspace.context_label)}</Label>
               <Textarea
+                id="workspace-context"
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
                 rows={4}

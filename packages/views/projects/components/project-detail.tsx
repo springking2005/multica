@@ -554,7 +554,13 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
-                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground"
+                      aria-label={t(($) => $.detail.actions_menu)}
+                      title={t(($) => $.detail.actions_menu)}
+                    >
                       <MoreHorizontal />
                     </Button>
                   }
