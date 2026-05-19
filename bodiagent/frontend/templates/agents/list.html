@@ -253,7 +253,7 @@ function renderAgentRow(agent) {
   var status = agent.status || 'active';
   var actionLabel = status === 'archived' ? '恢复' : '归档';
   return '<tr>' +
-    '<td><div class="ba-row-main"><div class="ba-row-title">' + escapeHtml(agent.name || '未命名智能体') + '</div>' +
+    '<td><div class="ba-row-main"><div class="ba-row-title"><a class="text-blue-700 hover:text-blue-900 hover:underline" href="/agents/' + escapeAttr(agent.id) + '/" hx-boost="true">' + escapeHtml(agent.name || '未命名智能体') + '</a></div>' +
       '<div class="ba-row-meta">' + escapeHtml(agent.description || '无描述') + '</div></div></td>' +
     '<td><div class="text-sm font-semibold text-gray-800">' + escapeHtml(agent.provider || '未设置') + '</div>' +
       '<div class="ba-row-meta">' + escapeHtml(agent.model || '默认模型') + '</div>' +

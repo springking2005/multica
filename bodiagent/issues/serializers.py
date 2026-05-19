@@ -46,15 +46,20 @@ class IssueSubscriberSerializer(serializers.ModelSerializer):
 
 
 class IssueDependencySerializer(serializers.ModelSerializer):
+    depends_on_title = serializers.CharField(source="depends_on.title", read_only=True)
+    depends_on_number = serializers.IntegerField(source="depends_on.number", read_only=True)
+
     class Meta:
         model = IssueDependency
         fields = [
             "id",
             "issue",
             "depends_on",
+            "depends_on_title",
+            "depends_on_number",
             "type",
         ]
-        read_only_fields = ["id", "issue"]
+        read_only_fields = ["id", "issue", "depends_on_title", "depends_on_number"]
 
 
 class IssueToLabelSerializer(serializers.ModelSerializer):

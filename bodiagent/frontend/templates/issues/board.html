@@ -103,6 +103,26 @@
             <option value="urgent">紧急</option>
           </select>
         </label>
+        <label class="block">
+          <span class="ba-toolbar-label">负责人类型</span>
+          <select name="assignee_type" class="ba-select mt-1">
+            <option value="">未分配</option>
+            <option value="member">成员</option>
+            <option value="agent">智能体</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="ba-toolbar-label">负责人</span>
+          <select name="assignee_id" class="ba-select mt-1" disabled>
+            <option value="">请先选择负责人类型</option>
+          </select>
+        </label>
+        <label class="block sm:col-span-2">
+          <span class="ba-toolbar-label">项目</span>
+          <select name="project" class="ba-select mt-1">
+            <option value="">不关联项目</option>
+          </select>
+        </label>
       </div>
     </div>
     <div class="ba-dialog-footer">
@@ -128,6 +148,7 @@
   var submitButton = document.getElementById('issue-create-submit');
   var alertBox = document.getElementById('issue-board-alert');
   var lastDialogTrigger = null;
+  var dependencies = { members: [], agents: [], projects: [] };
 
   function headers(hasBody) {
     var result = {'Accept': 'application/json', 'X-CSRFToken': csrfToken};
@@ -153,7 +174,20 @@
       showAlert('当前用户没有可用工作区，无法加载 Issue。', 'error');
       return;
     }
-    await Promise.all(statuses.map(loadColumn));
+    await Promise.all([loadCreateDependencies()].concat(statuses.map(loadColumn)));
+  }
+
+  async function loadCreateDependencies() {
+    var results = await Promise.all([
+      apiJson('/api/members/'),
+      apiJson('/api/agents'),
+      apiJson('/api/projects')
+    ]);
+    dependencies.members = normalizeList(results[0]);
+    dependencies.agents = normalizeList(results[1]);
+    dependencies.projects = normalizeList(results[2]);
+    renderProjectOptions();
+    renderAssigneeOptions();
   }
 
   async function loadColumn(status) {
@@ -197,6 +231,9 @@
     form.reset();
     form.status.value = status || 'backlog';
     form.priority.value = 'none';
+    form.assignee_type.value = '';
+    renderProjectOptions();
+    renderAssigneeOptions();
     errorBox.classList.add('hidden');
     dialog.hidden = false;
     dialog.classList.remove('hidden');
@@ -224,6 +261,11 @@
         priority: form.priority.value,
         origin_type: 'quick_create'
       };
+      if (form.assignee_type.value && form.assignee_id.value) {
+        payload.assignee_type = form.assignee_type.value;
+        payload.assignee_id = form.assignee_id.value;
+      }
+      if (form.project.value) payload.project = form.project.value;
       var issue = await apiJson('/api/issues', {method: 'POST', body: JSON.stringify(payload)});
       closeDialog();
       showAlert('Issue 已创建：#' + (issue.number || '--'), 'success');
@@ -234,6 +276,25 @@
       submitButton.disabled = false;
       submitButton.textContent = '创建';
     }
+  }
+
+  function renderProjectOptions() {
+    if (!form.project) return;
+    form.project.innerHTML = '<option value="">不关联项目</option>' + dependencies.projects.map(function(project) {
+      return '<option value="' + escapeAttr(project.id) + '">' + escapeHtml(project.title || '未命名项目') + '</option>';
+    }).join('');
+  }
+
+  function renderAssigneeOptions() {
+    if (!form.assignee_id || !form.assignee_type) return;
+    var type = form.assignee_type.value;
+    var items = type === 'member' ? dependencies.members : (type === 'agent' ? dependencies.agents : []);
+    form.assignee_id.disabled = !type;
+    form.assignee_id.innerHTML = type ? '<option value="">不分配</option>' + items.map(function(item) {
+      var user = item.user || {};
+      var label = type === 'member' ? (user.name || user.email || item.id) : (item.name || item.id);
+      return '<option value="' + escapeAttr(item.id) + '">' + escapeHtml(label) + '</option>';
+    }).join('') : '<option value="">请先选择负责人类型</option>';
   }
 
   function showFormError(message) {
@@ -258,6 +319,7 @@
   document.getElementById('issue-quick-create').addEventListener('click', function(event) { openDialog(event.currentTarget.dataset.defaultStatus); });
   document.getElementById('issue-refresh').addEventListener('click', loadBoard);
   form.addEventListener('submit', submitIssue);
+  form.assignee_type.addEventListener('change', renderAssigneeOptions);
   document.querySelectorAll('[data-issue-dialog-close]').forEach(function(button) { button.addEventListener('click', closeDialog); });
   root.addEventListener('click', function(event) {
     var button = event.target.closest('[data-add-status]');

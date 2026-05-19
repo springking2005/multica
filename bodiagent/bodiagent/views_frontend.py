@@ -49,6 +49,11 @@ def issues_board(request: HttpRequest) -> HttpResponse:
     return render(request, "issues/board.html", _frontend_context(request))
 
 
+def my_issues(request: HttpRequest) -> HttpResponse:
+    """Serve the current user's assigned issues page."""
+    return render(request, "issues/my_issues.html", _frontend_context(request))
+
+
 def inbox(request: HttpRequest) -> HttpResponse:
     """Serve the inbox shell with current workspace context."""
     return render(request, "inbox/list.html", _frontend_context(request))
@@ -73,6 +78,11 @@ def agents(request: HttpRequest) -> HttpResponse:
     return render(request, "agents/list.html", _frontend_context(request))
 
 
+def agent_detail(request: HttpRequest, agent_id: UUID) -> HttpResponse:
+    """Serve the agent detail page shell."""
+    return render(request, "agents/detail.html", _frontend_context(request, agent_id=str(agent_id)))
+
+
 def chat_detail(request: HttpRequest, session_id: UUID | None = None) -> HttpResponse:
     """Serve the chat page shell."""
     return render(
@@ -85,6 +95,11 @@ def chat_detail(request: HttpRequest, session_id: UUID | None = None) -> HttpRes
 def projects(request: HttpRequest) -> HttpResponse:
     """Serve the project management page shell."""
     return render(request, "projects/list.html", _frontend_context(request))
+
+
+def project_detail(request: HttpRequest, project_id: UUID) -> HttpResponse:
+    """Serve the project detail page shell."""
+    return render(request, "projects/detail.html", _frontend_context(request, project_id=str(project_id)))
 
 
 def autopilots(request: HttpRequest) -> HttpResponse:

@@ -18,6 +18,9 @@
       <button id="inbox-archive-read" type="button" class="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
         归档已读
       </button>
+      <button id="inbox-archive-completed" type="button" class="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+        归档已完成任务
+      </button>
     </div>
   </div>
 
@@ -136,6 +139,7 @@
           '<p class="truncate text-sm font-medium text-gray-900">' + escapeHtml(item.title || '') + '</p>' +
           (item.body ? '<p class="mt-1 line-clamp-2 text-sm text-gray-500">' + escapeHtml(item.body) + '</p>' : '') +
         '</div>' +
+        '<button type="button" class="inbox-archive-button rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">归档</button>' +
       '</a>';
     }).join('');
     if (state.items.length < state.total) loadMore.classList.remove('hidden');
@@ -163,9 +167,26 @@
     var data = await apiJson('/api/inbox/' + id + '/read', { method: 'POST' });
     state.items = state.items.map(function(item) { return item.id === id ? data : item; });
     renderInbox();
+    window.dispatchEvent(new CustomEvent('bodiagent:inbox-updated'));
+  }
+
+  async function archiveItem(id) {
+    await apiJson('/api/inbox/' + id + '/archive', { method: 'POST' });
+    state.items = state.items.filter(function(item) { return item.id !== id; });
+    state.total = Math.max(0, state.total - 1);
+    renderInbox();
+    window.dispatchEvent(new CustomEvent('bodiagent:inbox-updated'));
   }
 
   list.addEventListener('click', function(event) {
+    var archiveButton = event.target.closest('.inbox-archive-button');
+    if (archiveButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      var archiveRow = archiveButton.closest('.inbox-item');
+      if (archiveRow) archiveItem(archiveRow.dataset.inboxId).catch(function(error) { list.innerHTML = '<div class="text-center py-12 text-sm text-red-600">归档失败：' + escapeHtml(error.message) + '</div>'; });
+      return;
+    }
     var row = event.target.closest('.inbox-item');
     if (!row) return;
     var item = state.items.find(function(entry) { return entry.id === row.dataset.inboxId; });
@@ -177,11 +198,19 @@
   document.getElementById('inbox-mark-all-read').addEventListener('click', async function() {
     await apiJson('/api/inbox/mark-all-read', { method: 'POST' });
     await refreshInbox();
+    window.dispatchEvent(new CustomEvent('bodiagent:inbox-updated'));
   });
 
   document.getElementById('inbox-archive-read').addEventListener('click', async function() {
     await apiJson('/api/inbox/archive-all-read', { method: 'POST' });
     await refreshInbox();
+    window.dispatchEvent(new CustomEvent('bodiagent:inbox-updated'));
+  });
+
+  document.getElementById('inbox-archive-completed').addEventListener('click', async function() {
+    await apiJson('/api/inbox/archive-completed', { method: 'POST' });
+    await refreshInbox();
+    window.dispatchEvent(new CustomEvent('bodiagent:inbox-updated'));
   });
 
   loadMore.addEventListener('click', function() { loadInbox(false).catch(function(error) { list.innerHTML = '<div class="text-center py-12 text-sm text-red-600">加载失败：' + escapeHtml(error.message) + '</div>'; }); });

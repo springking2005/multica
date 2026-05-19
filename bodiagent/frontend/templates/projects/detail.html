@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}项目详情 - 波笛智能体{% endblock %}
+
+{% block content %}
+<div class="ba-page-shell" id="project-detail-page" data-project-id="{{ project_id }}" data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <header class="ba-page-header">
+    <div class="ba-page-heading">
+      <a href="/projects/" class="text-sm font-medium text-blue-600 hover:text-blue-700">← 返回项目</a>
+      <div class="ba-page-eyebrow mt-2">Project</div>
+      <h1 id="project-title" class="ba-page-title">项目详情</h1>
+      <p id="project-description" class="ba-page-description">正在加载项目。</p>
+    </div>
+    <div class="ba-page-actions">
+      <span id="project-progress" class="ba-badge ba-badge--info">进度 0%</span>
+      <a class="ba-button ba-button--primary" href="/issues/?quick_create=1">新建 Issue</a>
+    </div>
+  </header>
+  <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"><div class="text-xs text-gray-500">状态</div><div id="project-status" class="mt-1 text-sm font-semibold text-gray-900">--</div></div>
+    <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"><div class="text-xs text-gray-500">Issue</div><div id="project-issue-count" class="mt-1 text-sm font-semibold text-gray-900">0 个 Issue</div></div>
+    <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"><div class="text-xs text-gray-500">负责人</div><div id="project-lead" class="mt-1 text-sm font-semibold text-gray-900">未指定</div></div>
+  </section>
+  <section class="mt-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div class="border-b border-gray-100 px-5 py-4"><h2 class="text-sm font-semibold text-gray-900">项目 Issue</h2></div>
+    <div id="project-issues" class="divide-y divide-gray-100"><div class="px-5 py-8 text-sm text-gray-400">正在加载 Issue...</div></div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var root = document.getElementById('project-detail-page');
+  var projectId = root.dataset.projectId;
+  var workspaceId = root.dataset.workspaceId || '';
+  var csrfToken = root.dataset.csrf || '';
+  function headers() { var h = {'Accept':'application/json','X-CSRFToken':csrfToken}; if (workspaceId) h['X-Workspace-ID'] = workspaceId; return h; }
+  async function apiJson(url) { var r = await fetch(url, {headers: headers(), credentials:'same-origin'}); var t = await r.text(); var d = t ? JSON.parse(t) : null; if (!r.ok) throw new Error((d && d.detail) || ('HTTP ' + r.status)); return d; }
+  function list(data) { return Array.isArray(data) ? data : (Array.isArray(data && data.results) ? data.results : []); }
+  function esc(v) { var div = document.createElement('div'); div.textContent = v == null ? '' : String(v); return div.innerHTML; }
+  function statusLabel(v) { return ({planned:'计划中', in_progress:'进行中', paused:'暂停', completed:'已完成', cancelled:'已取消'})[v] || v || '未知'; }
+  function issueStatus(v) { return ({backlog:'待规划', todo:'待处理', in_progress:'进行中', in_review:'审查中', done:'已完成', blocked:'阻塞', cancelled:'已取消'})[v] || v || '未知'; }
+  function renderProject(project) {
+    document.getElementById('project-title').textContent = project.title || '未命名项目';
+    document.getElementById('project-description').textContent = project.description || '无描述';
+    document.getElementById('project-progress').textContent = '进度 ' + (project.progress || 0) + '%';
+    document.getElementById('project-status').textContent = statusLabel(project.status);
+    document.getElementById('project-issue-count').textContent = (project.issue_count || 0) + ' 个 Issue';
+    document.getElementById('project-lead').textContent = project.lead_name || '未指定';
+  }
+  function renderIssues(items) {
+    var box = document.getElementById('project-issues');
+    if (!items.length) { box.innerHTML = '<div class="px-5 py-8 text-center text-sm text-gray-400">该项目暂无 Issue</div>'; return; }
+    box.innerHTML = items.map(function(issue) { return '<a class="block px-5 py-4 hover:bg-gray-50" href="/issues/' + esc(issue.id) + '/"><div class="flex items-center justify-between gap-3"><div><div class="font-medium text-gray-900">' + esc(issue.title || '未命名 Issue') + '</div><div class="mt-1 text-xs text-gray-500">#' + esc(issue.number || '--') + '</div></div><span class="ba-badge ba-badge--neutral">' + esc(issueStatus(issue.status)) + '</span></div></a>'; }).join('');
+  }
+  async function load() { if (!workspaceId) throw new Error('缺少工作区'); var results = await Promise.all([apiJson('/api/projects/' + projectId), apiJson('/api/issues?project_id=' + encodeURIComponent(projectId) + '&ordering=position')]); renderProject(results[0]); renderIssues(list(results[1])); }
+  load().catch(function(error) { document.getElementById('project-issues').innerHTML = '<div class="px-5 py-8 text-sm text-red-600">加载失败：' + esc(error.message) + '</div>'; });
+})();
+</script>
+{% endblock %}

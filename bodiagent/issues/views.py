@@ -256,7 +256,7 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
             ).delete()
             return Response({"ok": True})
 
-    @action(detail=True, methods=["get", "post"], url_path="labels")
+    @action(detail=True, methods=["get", "post", "delete"], url_path="labels")
     def labels(self, request: Request, issue_id: UUID = None) -> Response:
         issue = self.get_object()
         if request.method == "GET":
@@ -276,9 +276,22 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
                 )
             except IssueLabel.DoesNotExist:
                 raise Http404("Label not found")
-            mapping = IssueToLabel.objects.create(issue=issue, label=label)
+            mapping, created = IssueToLabel.objects.get_or_create(issue=issue, label=label)
             serializer = IssueToLabelSerializer(mapping)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        elif request.method == "DELETE":
+            label_id = request.data.get("label_id")
+            if not label_id:
+                return Response(
+                    {"detail": "label_id is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            deleted, _ = IssueToLabel.objects.filter(
+                issue=issue,
+                label_id=label_id,
+                label__workspace_id=self.get_workspace_id(),
+            ).delete()
+            return Response({"ok": True, "deleted": deleted})
 
 
 class CommentViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):

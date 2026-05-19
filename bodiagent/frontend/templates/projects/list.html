@@ -65,7 +65,7 @@
     <div class="ba-dialog-header">
       <div>
         <h2 id="project-dialog-title" class="ba-dialog-title">新建项目</h2>
-        <p id="project-dialog-description" class="ba-dialog-description">使用 API 字段 title 创建项目；状态、负责人等不支持的字段会以只读说明呈现。</p>
+        <p id="project-dialog-description" class="ba-dialog-description">创建项目后可进入详情页查看 Issue、资源和交付进度。</p>
       </div>
       <button type="button" class="ba-icon-button" aria-label="关闭" onclick="closeProjectDialog()" data-ba-dialog-close>×</button>
     </div>
@@ -105,11 +105,10 @@
           </select>
         </label>
         <label class="block">
-          <span class="ba-toolbar-label">负责人（只读占位）</span>
-          <input name="lead_display" class="ba-input mt-1" placeholder="后端接受 lead_type / lead_id 后启用" disabled>
+          <span class="ba-toolbar-label">负责人</span>
+          <input name="lead_display" class="ba-input mt-1" placeholder="可在详情页查看负责人" disabled>
         </label>
       </div>
-      <div class="ba-alert ba-alert--info">详情页尚未实现，因此项目标题不会渲染为可能断开的链接。</div>
     </div>
     <div class="ba-dialog-footer">
       <button type="button" class="ba-button ba-button--secondary" onclick="closeProjectDialog()" data-ba-dialog-close>取消</button>
@@ -181,11 +180,11 @@ function renderProjects() {
 
 function renderProjectRow(project) {
   return '<tr>' +
-    '<td><div class="ba-row-main"><div class="ba-row-title"><span class="mr-2">' + escapeHtml(project.icon || 'folder') + '</span>' + escapeHtml(project.title || '未命名项目') + '</div>' +
+    '<td><div class="ba-row-main"><div class="ba-row-title"><span class="mr-2">' + escapeHtml(project.icon || 'folder') + '</span><a class="text-blue-700 hover:text-blue-900 hover:underline" href="/projects/' + escapeAttr(project.id) + '/" hx-boost="true">' + escapeHtml(project.title || '未命名项目') + '</a></div>' +
       '<div class="ba-row-meta">' + escapeHtml(project.description || '无描述') + '</div></div></td>' +
     '<td>' + statusBadge(project.status) + '</td>' +
     '<td>' + priorityBadge(project.priority) + '</td>' +
-    '<td><div class="text-sm font-semibold text-gray-800">' + escapeHtml(progressText(project)) + '</div><div class="ba-row-meta">资源 ' + resourceCount(project) + ' · 占位</div></td>' +
+    '<td><div class="text-sm font-semibold text-gray-800">' + escapeHtml(progressText(project)) + '</div><div class="ba-row-meta">' + issueCountText(project) + ' · 资源 ' + resourceCount(project) + '</div></td>' +
     '<td><div class="text-sm text-gray-700">' + escapeHtml(leadText(project)) + '</div></td>' +
     '<td>' + formatDate(project.created_at) + '</td>' +
     '<td><div class="ba-row-actions justify-end">' +
@@ -333,11 +332,13 @@ function priorityLabel(value) { return ({none:'无优先级', low:'低', medium:
 function priorityRank(value) { return ({none:0, low:1, medium:2, high:3, urgent:4})[value] || 0; }
 function statusBadge(value) { var badge = value === 'completed' ? 'ba-badge--success' : value === 'in_progress' ? 'ba-badge--info' : value === 'paused' ? 'ba-badge--warning' : value === 'cancelled' ? 'ba-badge--danger' : 'ba-badge--neutral'; return '<span class="ba-badge ' + badge + '">' + escapeHtml(statusLabel(value)) + '</span>'; }
 function priorityBadge(value) { var badge = value === 'urgent' ? 'ba-badge--danger' : value === 'high' ? 'ba-badge--warning' : value === 'medium' ? 'ba-badge--info' : 'ba-badge--neutral'; return '<span class="ba-badge ' + badge + '">' + escapeHtml(priorityLabel(value)) + '</span>'; }
-function progressText(project) { if (typeof project.progress === 'number') return project.progress + '%'; if (project.progress_label) return project.progress_label; return '未接入'; }
+function progressText(project) { if (project.progress_label) return project.progress_label + ' · ' + (Number(project.progress || 0)) + '%'; if (typeof project.progress === 'number') return project.progress + '%'; return '暂无 Issue · 0%'; }
+function issueCountText(project) { return (project.issue_count || 0) + ' 个 Issue'; }
 function resourceCount(project) { return project.resource_count || project.resources_count || project.count || 0; }
 function leadText(project) { if (project.lead_name) return project.lead_name; if (project.lead_type && project.lead_id) return project.lead_type + ' · ' + project.lead_id; return '未指定'; }
 function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []); }
 function escapeHtml(str) { var div = document.createElement('div'); div.textContent = String(str == null ? '' : str); return div.innerHTML; }
+function escapeAttr(str) { return escapeHtml(str).replace(/"/g, '&quot;'); }
 function escapeJs(str) { return String(str == null ? '' : str).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
 function formatDate(iso) { if (!iso) return '—'; var d = new Date(iso); return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('zh-CN', {year:'numeric', month:'short', day:'numeric'}); }
 async function apiJson(url, options) { var response = await fetch(url, options || {}); var text = await response.text(); var data = text ? JSON.parse(text) : {}; if (!response.ok) throw new Error(formatApiError(data)); return data; }

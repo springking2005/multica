@@ -20,6 +20,8 @@ urlpatterns = [
     path("register/", TemplateView.as_view(template_name="accounts/register.html"), name="accounts-register"),
     path("dashboard/", login_required(views_frontend.dashboard), name="dashboard"),
     path("issues/", login_required(views_frontend.issues_board), name="issues-board"),
+    path("my-issues", login_required(views_frontend.my_issues), name="my-issues"),
+    path("my-issues/", login_required(views_frontend.my_issues), name="my-issues-slash"),
     path(
         "issues/<uuid:issue_id>/",
         views_frontend.issue_detail,
@@ -28,7 +30,9 @@ urlpatterns = [
     path("chat/", login_required(views_frontend.chat_detail), name="chat-new"),
     path("chat/<uuid:session_id>/", login_required(views_frontend.chat_detail), name="chat-detail"),
     path("agents/", login_required(views_frontend.agents), name="agents-list"),
+    path("agents/<uuid:agent_id>/", login_required(views_frontend.agent_detail), name="agents-detail"),
     path("projects/", login_required(views_frontend.projects), name="projects-list"),
+    path("projects/<uuid:project_id>/", login_required(views_frontend.project_detail), name="projects-detail"),
     path("autopilots/", login_required(views_frontend.autopilots), name="autopilots-list"),
     path("inbox/", login_required(views_frontend.inbox), name="inbox-list"),
     path("settings/", login_required(views_frontend.settings), name="settings-profile"),

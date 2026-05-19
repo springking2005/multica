@@ -129,22 +129,26 @@
           </div>
 
           <div class="rounded-md border border-gray-100 px-3 py-3">
-            <label for="issue-assignee-id" class="block text-xs font-medium text-gray-500">负责人 ID</label>
+            <label for="issue-assignee-id" class="block text-xs font-medium text-gray-500">负责人</label>
             <div class="mt-1 grid grid-cols-1 gap-2">
               <select id="issue-assignee-type" class="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" disabled>
                 <option value="">未分配</option>
                 <option value="member">成员</option>
                 <option value="agent">智能体</option>
               </select>
-              <input id="issue-assignee-id" type="text" class="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="UUID，可留空" disabled>
+              <select id="issue-assignee-id" class="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" disabled>
+                <option value="">未分配</option>
+              </select>
               <button type="button" id="issue-assignee-save" class="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400" disabled>更新负责人</button>
             </div>
           </div>
 
           <div class="rounded-md border border-gray-100 px-3 py-3">
-            <label for="issue-project-id" class="block text-xs font-medium text-gray-500">项目 ID</label>
+            <label for="issue-project-id" class="block text-xs font-medium text-gray-500">项目</label>
             <div class="mt-1 grid grid-cols-1 gap-2">
-              <input id="issue-project-id" type="text" class="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="UUID，可留空" disabled>
+              <select id="issue-project-id" class="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" disabled>
+                <option value="">不关联项目</option>
+              </select>
               <button type="button" id="issue-project-save" class="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400" disabled>更新项目</button>
             </div>
           </div>
@@ -159,8 +163,25 @@
             <div id="issue-labels" class="mt-2 flex flex-wrap gap-1">
               <span class="text-sm text-gray-400">加载中...</span>
             </div>
-            <p class="mt-2 text-xs text-gray-500">标签管理后端仅支持通过标签 ID 关联；此处先展示已有标签。</p>
+            <div class="mt-3 grid grid-cols-1 gap-2">
+              <select id="issue-label-add" class="rounded-md border border-gray-200 px-3 py-2 text-sm" disabled>
+                <option value="">选择标签</option>
+              </select>
+              <button type="button" id="issue-label-add-button" class="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400" disabled>添加标签</button>
+            </div>
           </div>
+
+          <div class="rounded-md border border-gray-100 px-3 py-3">
+            <h4 class="text-xs font-medium text-gray-500">子 Issue</h4>
+            <div id="issue-children-list" class="mt-2 space-y-2 text-sm text-gray-700">加载中...</div>
+          </div>
+
+          <div class="rounded-md border border-gray-100 px-3 py-3">
+            <h4 class="text-xs font-medium text-gray-500">依赖</h4>
+            <div id="issue-dependencies-list" class="mt-2 space-y-2 text-sm text-gray-700">加载中...</div>
+          </div>
+
+          <button type="button" id="issue-delete-button" class="w-full rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50" disabled>删除 Issue</button>
 
           <div class="border-t border-gray-100 pt-4 text-xs text-gray-500">
             <p>创建于 <span id="issue-created-at">--</span></p>
@@ -182,7 +203,7 @@
   var issueId = root.dataset.issueId;
   var workspaceId = root.dataset.workspaceId || '';
   var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  var state = { issue: null, comments: [], activities: [] };
+  var state = { issue: null, comments: [], activities: [], members: [], agents: [], projects: [], labels: [], children: [], dependencies: [] };
 
   var els = {
     alert: document.getElementById('issue-alert'),
@@ -209,6 +230,11 @@
     projectSave: document.getElementById('issue-project-save'),
     dueDate: document.getElementById('issue-due-date'),
     labels: document.getElementById('issue-labels'),
+    labelAdd: document.getElementById('issue-label-add'),
+    labelAddButton: document.getElementById('issue-label-add-button'),
+    children: document.getElementById('issue-children-list'),
+    dependencies: document.getElementById('issue-dependencies-list'),
+    deleteButton: document.getElementById('issue-delete-button'),
     createdAt: document.getElementById('issue-created-at'),
     updatedAt: document.getElementById('issue-updated-at')
   };
@@ -303,7 +329,7 @@
   }
 
   function setControlsEnabled(enabled) {
-    [els.titleInput, els.descriptionInput, els.statusSelect, els.prioritySelect, els.assigneeType, els.assigneeId, els.assigneeSave, els.projectId, els.projectSave, els.dueDate].forEach(function(el) {
+    [els.titleInput, els.descriptionInput, els.statusSelect, els.prioritySelect, els.assigneeType, els.assigneeId, els.assigneeSave, els.projectId, els.projectSave, els.dueDate, els.labelAdd, els.deleteButton].forEach(function(el) {
       if (el) el.disabled = !enabled;
     });
     updateDirtyButtons();
@@ -329,13 +355,14 @@
     els.statusSelect.value = issue.status || 'backlog';
     els.prioritySelect.value = issue.priority || 'none';
     els.assigneeType.value = issue.assignee_type || '';
-    els.assigneeId.value = issue.assignee_id || '';
-    els.projectId.value = issue.project || '';
+    renderAssigneeOptions(issue.assignee_id || '');
+    renderProjectOptions(issue.project || '');
     els.dueDate.value = toDatetimeLocal(issue.due_date);
     els.createdAt.textContent = formatDate(issue.created_at);
     els.updatedAt.textContent = formatDate(issue.updated_at);
     renderLabels(issue.labels || []);
     setControlsEnabled(true);
+    renderLabelOptions();
   }
 
   function renderLabels(labels) {
@@ -346,8 +373,44 @@
     els.labels.innerHTML = labels.map(function(mapping) {
       var label = mapping.label || mapping;
       var color = label.color || '#6B7280';
-      return '<span class="rounded-full px-2 py-1 text-xs font-medium text-white" style="background-color:' + escapeHtml(color) + '">' + escapeHtml(label.name || '标签') + '</span>';
+      return '<span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-white" style="background-color:' + escapeHtml(color) + '">' + escapeHtml(label.name || '标签') + '<button type="button" class="ml-1 rounded bg-black/20 px-1" data-remove-label="' + escapeHtml(label.id || '') + '" aria-label="移除 ' + escapeHtml(label.name || '标签') + '">×</button></span>';
     }).join('');
+  }
+
+  function renderAssigneeOptions(selectedId) {
+    var type = els.assigneeType.value;
+    var items = type === 'member' ? state.members : (type === 'agent' ? state.agents : []);
+    els.assigneeId.innerHTML = '<option value="">未分配</option>' + items.map(function(item) {
+      var user = item.user || {};
+      var label = type === 'member' ? (user.name || user.email || item.id) : (item.name || item.id);
+      return '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(label) + '</option>';
+    }).join('');
+    els.assigneeId.value = selectedId || '';
+  }
+
+  function renderProjectOptions(selectedId) {
+    els.projectId.innerHTML = '<option value="">不关联项目</option>' + state.projects.map(function(project) {
+      return '<option value="' + escapeHtml(project.id) + '">' + escapeHtml(project.title || '未命名项目') + '</option>';
+    }).join('');
+    els.projectId.value = selectedId || '';
+  }
+
+  function renderLabelOptions() {
+    var active = {};
+    (state.issue && state.issue.labels || []).forEach(function(mapping) { var label = mapping.label || mapping; if (label.id) active[label.id] = true; });
+    var options = state.labels.filter(function(label) { return !active[label.id]; });
+    els.labelAdd.innerHTML = '<option value="">选择标签</option>' + options.map(function(label) { return '<option value="' + escapeHtml(label.id) + '">' + escapeHtml(label.name || '标签') + '</option>'; }).join('');
+    els.labelAddButton.disabled = !state.issue || !options.length || !els.labelAdd.value;
+  }
+
+  function renderChildren() {
+    if (!state.children.length) { els.children.innerHTML = '<span class="text-gray-400">暂无子 Issue</span>'; return; }
+    els.children.innerHTML = state.children.map(function(issue) { return '<a class="block text-blue-700 hover:underline" href="/issues/' + escapeHtml(issue.id) + '/">' + escapeHtml(issue.title || '未命名 Issue') + '</a>'; }).join('');
+  }
+
+  function renderDependencies() {
+    if (!state.dependencies.length) { els.dependencies.innerHTML = '<span class="text-gray-400">暂无依赖</span>'; return; }
+    els.dependencies.innerHTML = state.dependencies.map(function(dep) { return '<div><span class="text-gray-500">' + escapeHtml(dep.type || 'related') + '</span> · <a class="text-blue-700 hover:underline" href="/issues/' + escapeHtml(dep.depends_on) + '/">' + escapeHtml(dep.depends_on_title || dep.depends_on || '依赖 Issue') + '</a></div>'; }).join('');
   }
 
   function renderComments() {
@@ -402,6 +465,25 @@
     renderComments();
   }
 
+  async function loadDependencies() {
+    var results = await Promise.all([
+      apiJson('/api/members/'),
+      apiJson('/api/agents'),
+      apiJson('/api/projects'),
+      apiJson('/api/labels'),
+      apiJson('/api/issues/' + issueId + '/children'),
+      apiJson('/api/issues/' + issueId + '/dependencies')
+    ]);
+    state.members = normalizeList(results[0]);
+    state.agents = normalizeList(results[1]);
+    state.projects = normalizeList(results[2]);
+    state.labels = normalizeList(results[3]);
+    state.children = normalizeList(results[4]);
+    state.dependencies = normalizeList(results[5]);
+    renderChildren();
+    renderDependencies();
+  }
+
   async function loadActivities() {
     try {
       var data = await apiJson('/api/activities?issue_id=' + encodeURIComponent(issueId) + '&limit=20');
@@ -448,16 +530,55 @@
     patchIssue({ due_date: fromDatetimeLocal(els.dueDate.value) }).catch(function(error) { setSaveState('截止日期更新失败：' + error.message, 'error'); renderIssue(state.issue); });
   });
 
+  els.assigneeType.addEventListener('change', function() { renderAssigneeOptions(''); });
+
   els.assigneeSave.addEventListener('click', function() {
-    var assigneeId = els.assigneeId.value.trim();
+    var assigneeId = els.assigneeId.value;
     var assigneeType = els.assigneeType.value;
     var payload = assigneeId ? { assignee_type: assigneeType || 'member', assignee_id: assigneeId } : { assignee_type: null, assignee_id: null };
     patchIssue(payload).catch(function(error) { setSaveState('负责人更新失败：' + error.message, 'error'); });
   });
 
   els.projectSave.addEventListener('click', function() {
-    var projectId = els.projectId.value.trim();
+    var projectId = els.projectId.value;
     patchIssue({ project: projectId || null }).catch(function(error) { setSaveState('项目更新失败：' + error.message, 'error'); });
+  });
+
+  els.labelAdd.addEventListener('change', function() {
+    els.labelAddButton.disabled = !els.labelAdd.value;
+  });
+
+  els.labelAddButton.addEventListener('click', async function() {
+    if (!els.labelAdd.value) return;
+    try {
+      await apiJson('/api/issues/' + issueId + '/labels', { method: 'POST', body: JSON.stringify({ label_id: els.labelAdd.value }) });
+      await loadIssue();
+      setSaveState('标签已添加', 'success');
+    } catch (error) {
+      setSaveState('标签添加失败：' + error.message, 'error');
+    }
+  });
+
+  els.labels.addEventListener('click', async function(event) {
+    var button = event.target.closest('[data-remove-label]');
+    if (!button) return;
+    try {
+      await apiJson('/api/issues/' + issueId + '/labels', { method: 'DELETE', body: JSON.stringify({ label_id: button.dataset.removeLabel }) });
+      await loadIssue();
+      setSaveState('标签已移除', 'success');
+    } catch (error) {
+      setSaveState('标签移除失败：' + error.message, 'error');
+    }
+  });
+
+  els.deleteButton.addEventListener('click', async function() {
+    if (!confirm('确定删除该 Issue 吗？')) return;
+    try {
+      await apiJson('/api/issues/' + issueId, { method: 'DELETE' });
+      window.location.href = '/issues/';
+    } catch (error) {
+      setSaveState('删除失败：' + error.message, 'error');
+    }
   });
 
   els.commentContent.addEventListener('input', function() {
@@ -491,7 +612,7 @@
   }
 
   setControlsEnabled(false);
-  Promise.all([loadIssue(), loadComments(), loadActivities()]).catch(function(error) {
+  Promise.all([loadDependencies(), loadIssue(), loadComments(), loadActivities()]).catch(function(error) {
     setAlert('Issue 加载失败：' + error.message, 'error');
     setControlsEnabled(false);
   });

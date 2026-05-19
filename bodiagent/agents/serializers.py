@@ -86,6 +86,8 @@ class SetAgentSkillsSerializer(serializers.Serializer):
 class TaskSerializer(serializers.ModelSerializer):
     agent_id = serializers.UUIDField(source="agent.id", read_only=True)
     issue_id = serializers.UUIDField(read_only=True)
+    issue_title = serializers.CharField(source="issue.title", read_only=True)
+    issue_number = serializers.IntegerField(source="issue.number", read_only=True)
     daemon_id = serializers.UUIDField(read_only=True)
     parent_task_id = serializers.UUIDField(read_only=True)
 
@@ -95,6 +97,8 @@ class TaskSerializer(serializers.ModelSerializer):
             "id",
             "agent_id",
             "issue_id",
+            "issue_title",
+            "issue_number",
             "daemon_id",
             "status",
             "priority",
@@ -120,6 +124,8 @@ class TaskSerializer(serializers.ModelSerializer):
             "id",
             "agent_id",
             "issue_id",
+            "issue_title",
+            "issue_number",
             "daemon_id",
             "status",
             "session_id",

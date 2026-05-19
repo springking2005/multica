@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}我的 Issues - 波笛智能体{% endblock %}
+
+{% block content %}
+<div class="ba-page-shell" id="my-issues-page" data-workspace-id="{{ current_workspace_id|default:'' }}" data-member-id="{{ current_member_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <header class="ba-page-header">
+    <div class="ba-page-heading">
+      <div class="ba-page-eyebrow">Assigned</div>
+      <h1 class="ba-page-title">我的 Issues</h1>
+      <p class="ba-page-description">查看分配给当前成员的 Issue，并快速进入详情处理。</p>
+    </div>
+    <div class="ba-page-actions">
+      <span id="my-issues-count" class="ba-badge ba-badge--neutral">0 个 Issue</span>
+      <a class="ba-button ba-button--primary" href="/issues/?quick_create=1">新建 Issue</a>
+    </div>
+  </header>
+  <div id="my-issues-list" class="space-y-3">
+    <div class="ba-empty-state"><div class="ba-empty-state-icon">…</div><div class="ba-empty-state-title">正在加载</div><div class="ba-empty-state-body">正在读取分配给我的 Issue。</div></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var root = document.getElementById('my-issues-page');
+  var workspaceId = root ? root.dataset.workspaceId || '' : '';
+  var memberId = root ? root.dataset.memberId || '' : '';
+  var csrfToken = root ? root.dataset.csrf || '' : '';
+  var list = document.getElementById('my-issues-list');
+  var count = document.getElementById('my-issues-count');
+
+  function headers() {
+    var result = {'Accept': 'application/json', 'X-CSRFToken': csrfToken};
+    if (workspaceId) result['X-Workspace-ID'] = workspaceId;
+    return result;
+  }
+  async function apiJson(url) {
+    var response = await fetch(url, {headers: headers(), credentials: 'same-origin'});
+    var text = await response.text();
+    var data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error((data && data.detail) || ('HTTP ' + response.status));
+    return data;
+  }
+  function normalizeList(data) { return Array.isArray(data) ? data : (Array.isArray(data && data.results) ? data.results : []); }
+  function escapeHtml(value) { var div = document.createElement('div'); div.textContent = value == null ? '' : String(value); return div.innerHTML; }
+  function statusLabel(value) { return ({backlog:'待规划', todo:'待处理', in_progress:'进行中', in_review:'审查中', done:'已完成', blocked:'阻塞', cancelled:'已取消'})[value] || value || '未知'; }
+  function priorityLabel(value) { return ({urgent:'紧急', high:'高', medium:'中', low:'低', none:'无'})[value] || value || '无'; }
+  function formatDate(value) { var d = value ? new Date(value) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('zh-CN', {month:'short', day:'numeric'}) : '—'; }
+  function render(items) {
+    count.textContent = items.length + ' 个 Issue';
+    if (!items.length) {
+      list.innerHTML = '<div class="ba-empty-state"><div class="ba-empty-state-icon">📋</div><div class="ba-empty-state-title">暂无分配给我的 Issue</div><div class="ba-empty-state-body">你可以从看板创建或分配 Issue。</div></div>';
+      return;
+    }
+    list.innerHTML = '<div class="ba-table-wrap"><table class="ba-table" aria-label="我的 Issues"><thead><tr><th>Issue</th><th>状态</th><th>优先级</th><th>更新</th></tr></thead><tbody>' + items.map(function(issue) {
+      return '<tr><td><div class="ba-row-main"><a class="ba-row-title text-blue-700 hover:underline" href="/issues/' + escapeHtml(issue.id) + '/">' + escapeHtml(issue.title || '未命名 Issue') + '</a><div class="ba-row-meta">#' + escapeHtml(issue.number || '--') + '</div></div></td><td><span class="ba-badge ba-badge--neutral">' + escapeHtml(statusLabel(issue.status)) + '</span></td><td>' + escapeHtml(priorityLabel(issue.priority)) + '</td><td>' + escapeHtml(formatDate(issue.updated_at)) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+  async function load() {
+    if (!workspaceId) {
+      list.innerHTML = '<div class="ba-empty-state"><div class="ba-empty-state-title">创建工作区</div><div class="ba-empty-state-body">当前用户还没有工作区，请先创建工作区。</div></div>';
+      return;
+    }
+    if (!memberId) throw new Error('缺少当前成员身份');
+    var items = normalizeList(await apiJson('/api/issues?assignee_type=member&assignee_id=' + encodeURIComponent(memberId) + '&ordering=-updated_at'));
+    render(items);
+  }
+  load().catch(function(error) { list.innerHTML = '<div class="ba-alert ba-alert--error">加载失败：' + escapeHtml(error.message) + '</div>'; });
+})();
+</script>
+{% endblock %}

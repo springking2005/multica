@@ -11,6 +11,12 @@ from .models import Project, ProjectResource
 
 class ProjectSerializer(serializers.ModelSerializer):
     workspace_id = serializers.UUIDField(read_only=True)
+    issue_count = serializers.SerializerMethodField()
+    done_issue_count = serializers.SerializerMethodField()
+    resource_count = serializers.SerializerMethodField()
+    progress = serializers.SerializerMethodField()
+    progress_label = serializers.SerializerMethodField()
+    lead_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
@@ -24,10 +30,49 @@ class ProjectSerializer(serializers.ModelSerializer):
             "lead_type",
             "lead_id",
             "priority",
+            "issue_count",
+            "done_issue_count",
+            "resource_count",
+            "progress",
+            "progress_label",
+            "lead_name",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "workspace_id", "status", "created_at", "updated_at"]
+
+    def get_issue_count(self, obj: Project) -> int:
+        return getattr(obj, "issue_count", None) if getattr(obj, "issue_count", None) is not None else obj.issues.count()
+
+    def get_done_issue_count(self, obj: Project) -> int:
+        value = getattr(obj, "done_issue_count", None)
+        return value if value is not None else obj.issues.filter(status="done").count()
+
+    def get_resource_count(self, obj: Project) -> int:
+        value = getattr(obj, "resource_count", None)
+        return value if value is not None else obj.resources.count()
+
+    def get_progress(self, obj: Project) -> int:
+        total = self.get_issue_count(obj)
+        if not total:
+            return 0
+        return round(self.get_done_issue_count(obj) * 100 / total)
+
+    def get_progress_label(self, obj: Project) -> str:
+        total = self.get_issue_count(obj)
+        done = self.get_done_issue_count(obj)
+        return f"{done}/{total} 个 Issue 完成" if total else "暂无 Issue"
+
+    def get_lead_name(self, obj: Project) -> str:
+        if not obj.lead_type or not obj.lead_id:
+            return "未指定"
+        if obj.lead_type == Project.LeadType.MEMBER:
+            member = obj.workspace.members.filter(id=obj.lead_id).select_related("user").first()
+            return member.user.name if member else str(obj.lead_id)
+        if obj.lead_type == Project.LeadType.AGENT:
+            agent = obj.workspace.agents.filter(id=obj.lead_id).first()
+            return agent.name if agent else str(obj.lead_id)
+        return str(obj.lead_id)
 
     def validate(self, attrs: dict) -> dict:
         lead_type = attrs.get("lead_type", getattr(self.instance, "lead_type", None))

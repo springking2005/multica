@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from django.db.models import Q, QuerySet
+from django.db.models import Count, Q, QuerySet
 from django.http import Http404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -43,7 +43,11 @@ class ProjectViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
     http_method_names = ["get", "post", "put", "delete", "head", "options"]
 
     def get_queryset(self) -> QuerySet[Project]:
-        return Project.objects.filter(workspace_id=self.get_workspace_id())
+        return Project.objects.filter(workspace_id=self.get_workspace_id()).annotate(
+            issue_count=Count("issues", distinct=True),
+            done_issue_count=Count("issues", filter=Q(issues__status="done"), distinct=True),
+            resource_count=Count("resources", distinct=True),
+        )
 
     def get_serializer_class(self):
         if self.action in {"update", "partial_update"}:

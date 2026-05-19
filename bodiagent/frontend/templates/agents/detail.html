@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}智能体详情 - 波笛智能体{% endblock %}
+
+{% block content %}
+<div class="ba-page-shell" id="agent-detail-page" data-agent-id="{{ agent_id }}" data-workspace-id="{{ current_workspace_id|default:'' }}" data-csrf="{{ csrf_token }}">
+  <header class="ba-page-header">
+    <div class="ba-page-heading">
+      <a href="/agents/" class="text-sm font-medium text-blue-600 hover:text-blue-700">← 返回智能体</a>
+      <div class="ba-page-eyebrow mt-2">Agent</div>
+      <h1 id="agent-title" class="ba-page-title">智能体详情</h1>
+      <p id="agent-description" class="ba-page-description">正在加载智能体。</p>
+    </div>
+    <div class="ba-page-actions"><span id="agent-status" class="ba-badge ba-badge--neutral">--</span></div>
+  </header>
+  <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"><div class="text-xs text-gray-500">提供商</div><div id="agent-provider" class="mt-1 text-sm font-semibold text-gray-900">--</div></div>
+    <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"><div class="text-xs text-gray-500">模型</div><div id="agent-model" class="mt-1 text-sm font-semibold text-gray-900">--</div></div>
+    <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"><div class="text-xs text-gray-500">并发</div><div id="agent-concurrency" class="mt-1 text-sm font-semibold text-gray-900">--</div></div>
+  </section>
+  <section class="mt-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div class="border-b border-gray-100 px-5 py-4"><h2 class="text-sm font-semibold text-gray-900">任务历史</h2></div>
+    <div id="agent-task-history" class="divide-y divide-gray-100"><div class="px-5 py-8 text-sm text-gray-400">正在加载任务历史...</div></div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var root = document.getElementById('agent-detail-page');
+  var agentId = root.dataset.agentId;
+  var workspaceId = root.dataset.workspaceId || '';
+  var csrfToken = root.dataset.csrf || '';
+  function headers() { var h = {'Accept':'application/json','X-CSRFToken':csrfToken}; if (workspaceId) h['X-Workspace-ID'] = workspaceId; return h; }
+  async function apiJson(url) { var r = await fetch(url, {headers: headers(), credentials:'same-origin'}); var t = await r.text(); var d = t ? JSON.parse(t) : null; if (!r.ok) throw new Error((d && d.detail) || ('HTTP ' + r.status)); return d; }
+  function list(data) { return Array.isArray(data) ? data : (Array.isArray(data && data.results) ? data.results : []); }
+  function esc(v) { var div = document.createElement('div'); div.textContent = v == null ? '' : String(v); return div.innerHTML; }
+  function renderAgent(agent) { document.getElementById('agent-title').textContent = agent.name || '未命名智能体'; document.getElementById('agent-description').textContent = agent.description || '无描述'; document.getElementById('agent-status').textContent = agent.status || 'active'; document.getElementById('agent-provider').textContent = agent.provider || '--'; document.getElementById('agent-model').textContent = agent.model || '默认模型'; document.getElementById('agent-concurrency').textContent = (agent.max_concurrent_tasks || 1) + ' 个任务'; }
+  function renderTasks(tasks) { var box = document.getElementById('agent-task-history'); if (!tasks.length) { box.innerHTML = '<div class="px-5 py-8 text-center text-sm text-gray-400">暂无任务历史</div>'; return; } box.innerHTML = tasks.map(function(task) { var issue = task.issue_title ? '<a class="text-blue-700 hover:underline" href="/issues/' + esc(task.issue_id) + '/">' + esc(task.issue_title) + '</a>' : esc(task.issue_id || '未关联 Issue'); return '<article class="px-5 py-4"><div class="flex flex-wrap items-center justify-between gap-2"><div class="font-medium text-gray-900">' + issue + '</div><span class="ba-badge ba-badge--neutral">' + esc(task.status || 'unknown') + '</span></div><div class="mt-1 text-xs text-gray-500">Task ' + esc(task.id) + '</div></article>'; }).join(''); }
+  async function load() { if (!workspaceId) throw new Error('缺少工作区'); var results = await Promise.all([apiJson('/api/agents/' + agentId), apiJson('/api/agents/' + agentId + '/tasks')]); renderAgent(results[0]); renderTasks(list(results[1])); }
+  load().catch(function(error) { document.getElementById('agent-task-history').innerHTML = '<div class="px-5 py-8 text-sm text-red-600">加载失败：' + esc(error.message) + '</div>'; });
+})();
+</script>
+{% endblock %}
