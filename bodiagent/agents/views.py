@@ -6,6 +6,7 @@ from uuid import UUID
 
 from django.db import models
 from django.db.models import QuerySet
+from django.http import Http404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -14,6 +15,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from accounts.workspace_scope import (
+    resolve_daemon_from_request,
+    resolve_workspace_id,
+    resolve_workspace_member,
+    validate_daemon_binding,
+    validate_request_daemon_id,
+    validate_skill_ids,
+)
 
 from .models import (
     Agent,
@@ -48,26 +58,13 @@ from .serializers import (
 
 
 class WorkspaceScopedMixin:
-    """Resolve workspace scope from middleware/header/query."""
+    """Resolve workspace scope and enforce membership."""
 
     request: Request
 
     def get_workspace_id(self) -> UUID:
-        raw_workspace_id = (
-            getattr(self.request, "workspace_id", None)
-            or self.request.headers.get("X-Workspace-ID")
-            or self.request.query_params.get("ws_id")
-        )
-        if not raw_workspace_id:
-            raise ValidationError(
-                {"workspace_id": "X-Workspace-ID header or ws_id query parameter is required."}
-            )
-        try:
-            return UUID(str(raw_workspace_id))
-        except ValueError as exc:
-            raise ValidationError(
-                {"workspace_id": "Workspace id must be a valid UUID."}
-            ) from exc
+        return resolve_workspace_id(self.request)
+
 
 
 # ── Agent ViewSet ──────────────────────────────────────────────────────
@@ -91,7 +88,22 @@ class AgentViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         return AgentSerializer
 
     def perform_create(self, serializer):
-        serializer.save(workspace_id=self.get_workspace_id())
+        workspace_id = self.get_workspace_id()
+        daemon = None
+        daemon_id = serializer.validated_data.pop("daemon_id", None)
+        if daemon_id:
+            daemon = validate_daemon_binding(daemon_id, workspace_id)
+        skill_ids = serializer.validated_data.get("skill_ids", [])
+        validate_skill_ids(skill_ids, workspace_id)
+        serializer.save(workspace_id=workspace_id, daemon=daemon, owner=self.request.user)
+
+    def perform_update(self, serializer):
+        daemon = None
+        daemon_id = serializer.validated_data.pop("daemon_id", None)
+        if daemon_id:
+            daemon = validate_daemon_binding(daemon_id, self.get_workspace_id())
+        kwargs = {"daemon": daemon} if daemon_id is not None else {}
+        serializer.save(**kwargs)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -128,6 +140,7 @@ class AgentViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
             AgentSkill.objects.filter(agent=agent).values_list("skill_id", flat=True)
         )
         desired_skills = set(serializer.validated_data["skill_ids"])
+        validate_skill_ids(list(desired_skills), agent.workspace_id)
         to_add = desired_skills - agent_skills
         to_remove = agent_skills - desired_skills
 
@@ -175,19 +188,49 @@ class TaskViewSet(WorkspaceScopedMixin, mixins.RetrieveModelMixin, viewsets.Gene
     def queue(self, request):
         serializer = TaskQueueSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        agent = Agent.objects.get(
-            id=serializer.validated_data["agent_id"],
-            workspace_id=self.get_workspace_id(),
-        )
+        workspace_id = self.get_workspace_id()
+        try:
+            agent = Agent.objects.get(
+                id=serializer.validated_data["agent_id"],
+                workspace_id=workspace_id,
+            )
+        except Agent.DoesNotExist as exc:
+            raise Http404("Agent not found") from exc
+
+        issue_id = serializer.validated_data.get("issue_id")
+        if issue_id:
+            from issues.models import Issue
+
+            if not Issue.objects.filter(id=issue_id, workspace_id=workspace_id).exists():
+                raise ValidationError({"issue_id": "Issue must belong to the workspace."})
+
+        trigger_comment_id = serializer.validated_data.get("trigger_comment_id")
+        if trigger_comment_id:
+            from issues.models import Comment
+
+            if not Comment.objects.filter(id=trigger_comment_id, workspace_id=workspace_id).exists():
+                raise ValidationError({"trigger_comment_id": "Comment must belong to the workspace."})
+
+        autopilot_run_id = serializer.validated_data.get("autopilot_run_id")
+        if autopilot_run_id:
+            from autopilots.models import AutopilotRun
+
+            if not AutopilotRun.objects.filter(id=autopilot_run_id, autopilot__workspace_id=workspace_id).exists():
+                raise ValidationError({"autopilot_run_id": "Autopilot run must belong to the workspace."})
+
+        parent_task_id = serializer.validated_data.get("parent_task_id")
+        if parent_task_id and not Task.objects.filter(id=parent_task_id, agent__workspace_id=workspace_id).exists():
+            raise ValidationError({"parent_task_id": "Parent task must belong to the workspace."})
+
         task = Task.objects.create(
             agent=agent,
             daemon=agent.daemon,
-            issue_id=serializer.validated_data.get("issue_id"),
+            issue_id=issue_id,
             priority=serializer.validated_data.get("priority", 0),
             trigger_summary=serializer.validated_data.get("trigger_summary", ""),
-            trigger_comment_id=serializer.validated_data.get("trigger_comment_id"),
-            autopilot_run_id=serializer.validated_data.get("autopilot_run_id"),
-            parent_task_id=serializer.validated_data.get("parent_task_id"),
+            trigger_comment_id=trigger_comment_id,
+            autopilot_run_id=autopilot_run_id,
+            parent_task_id=parent_task_id,
             force_fresh_session=serializer.validated_data.get(
                 "force_fresh_session", False
             ),
@@ -208,11 +251,13 @@ class TaskViewSet(WorkspaceScopedMixin, mixins.RetrieveModelMixin, viewsets.Gene
     def claim(self, request):
         serializer = TaskClaimSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        daemon_id = serializer.validated_data["daemon_id"]
+        workspace_id = self.get_workspace_id()
+        daemon = validate_daemon_binding(serializer.validated_data["daemon_id"], workspace_id, required=True)
 
         task = (
             Task.objects.filter(
-                daemon_id=daemon_id,
+                daemon=daemon,
+                agent__workspace_id=workspace_id,
                 status=Task.Status.QUEUED,
             )
             .order_by("-priority", "created_at")
@@ -339,22 +384,21 @@ class TaskViewSet(WorkspaceScopedMixin, mixins.RetrieveModelMixin, viewsets.Gene
 
 
 class DaemonControlView(APIView):
-    """Daemon-scoped task claiming and lifecycle endpoints.
-
-    Authentication via daemon token (handled by middleware/permissions).
-    """
+    """Daemon-scoped task claiming and lifecycle endpoints."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         """Claim a task by daemon_id."""
         serializer = TaskClaimSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        daemon_id = serializer.validated_data["daemon_id"]
+        daemon = resolve_daemon_from_request(request)
+        validate_request_daemon_id(request, daemon)
 
         task = (
             Task.objects.filter(
-                daemon_id=daemon_id,
+                daemon=daemon,
                 status=Task.Status.QUEUED,
             )
             .select_related("agent", "issue")
@@ -379,15 +423,17 @@ class DaemonTaskLifecycleView(viewsets.ViewSet):
     """Daemon-scoped task lifecycle endpoints that do not require workspace headers."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
 
-    def get_task(self, task_id: UUID) -> Task:
+    def get_task(self, request, task_id: UUID) -> Task:
+        daemon = resolve_daemon_from_request(request)
         try:
-            return Task.objects.select_related("agent", "issue").get(id=task_id)
+            return Task.objects.select_related("agent", "issue").get(id=task_id, daemon=daemon)
         except Task.DoesNotExist as exc:
             raise ValidationError({"task_id": "Task not found."}) from exc
 
     def post_start(self, request, task_id: UUID):
-        task = self.get_task(task_id)
+        task = self.get_task(request, task_id)
         if task.status not in (Task.Status.DISPATCHED, Task.Status.RUNNING):
             raise ValidationError({"status": "Can only start dispatched or running tasks."})
         if task.status == Task.Status.DISPATCHED:
@@ -399,7 +445,7 @@ class DaemonTaskLifecycleView(viewsets.ViewSet):
         return Response(TaskSerializer(task).data)
 
     def post_progress(self, request, task_id: UUID):
-        task = self.get_task(task_id)
+        task = self.get_task(request, task_id)
         if task.status not in (Task.Status.DISPATCHED, Task.Status.RUNNING):
             raise ValidationError({"status": "Can only report progress on dispatched or running tasks."})
         serializer = TaskProgressSerializer(data=request.data)
@@ -420,7 +466,7 @@ class DaemonTaskLifecycleView(viewsets.ViewSet):
         return Response(TaskSerializer(task).data)
 
     def post_complete(self, request, task_id: UUID):
-        task = self.get_task(task_id)
+        task = self.get_task(request, task_id)
         serializer = TaskCompleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         task.status = Task.Status.COMPLETED
@@ -431,7 +477,7 @@ class DaemonTaskLifecycleView(viewsets.ViewSet):
         return Response(TaskSerializer(task).data)
 
     def post_fail(self, request, task_id: UUID):
-        task = self.get_task(task_id)
+        task = self.get_task(request, task_id)
         serializer = TaskFailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         task.status = Task.Status.FAILED
@@ -441,15 +487,15 @@ class DaemonTaskLifecycleView(viewsets.ViewSet):
         return Response(TaskSerializer(task).data)
 
     def get_status(self, request, task_id: UUID):
-        return Response(TaskSerializer(self.get_task(task_id)).data)
+        return Response(TaskSerializer(self.get_task(request, task_id)).data)
 
     def get_messages(self, request, task_id: UUID):
-        task = self.get_task(task_id)
+        task = self.get_task(request, task_id)
         queryset = TaskMessage.objects.filter(task=task).order_by("seq")
         return Response(TaskMessageSerializer(queryset, many=True).data)
 
     def post_messages(self, request, task_id: UUID):
-        task = self.get_task(task_id)
+        task = self.get_task(request, task_id)
         serializer = TaskMessageBatchSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         last_seq = TaskMessage.objects.filter(task=task).aggregate(max_seq=models.Max("seq"))["max_seq"] or 0
@@ -471,8 +517,17 @@ class DaemonTaskLifecycleView(viewsets.ViewSet):
         TaskMessage.objects.bulk_create(created)
         return Response({"ok": True, "count": len(created)})
 
+    def post_session(self, request, task_id: UUID):
+        task = self.get_task(request, task_id)
+        session_id = request.data.get("session_id", "")
+        if not session_id:
+            raise ValidationError({"session_id": "This field is required."})
+        task.session_id = session_id
+        task.save(update_fields=["session_id", "updated_at"])
+        return Response(TaskSerializer(task).data)
+
     def post_usage(self, request, task_id: UUID):
-        task = self.get_task(task_id)
+        task = self.get_task(request, task_id)
         provider = request.data.get("provider")
         model = request.data.get("model") or "unknown"
         if not provider:
@@ -507,7 +562,9 @@ class SkillViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         return Skill.objects.filter(workspace_id=self.get_workspace_id())
 
     def perform_create(self, serializer):
-        serializer.save(workspace_id=self.get_workspace_id())
+        workspace_id = self.get_workspace_id()
+        member = resolve_workspace_member(self.request, workspace_id)
+        serializer.save(workspace_id=workspace_id, created_by_type="member", created_by_id=member.id)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -546,8 +603,12 @@ class SkillViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
     def import_skill(self, request):
         serializer = SkillImportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        workspace_id = self.get_workspace_id()
+        member = resolve_workspace_member(self.request, workspace_id)
         skill = Skill.objects.create(
-            workspace_id=self.get_workspace_id(),
+            workspace_id=workspace_id,
+            created_by_type="member",
+            created_by_id=member.id,
             name=serializer.validated_data["name"],
             description=serializer.validated_data.get("description", ""),
             content=serializer.validated_data.get("content", ""),
@@ -587,6 +648,10 @@ class TaskUsageViewSet(WorkspaceScopedMixin, viewsets.GenericViewSet):
             raise ValidationError(
                 {"detail": "task_id, provider, and model are required."}
             )
+        workspace_id = self.get_workspace_id()
+        task = Task.objects.filter(id=task_id, agent__workspace_id=workspace_id).first()
+        if task is None:
+            raise ValidationError({"task_id": "Task must belong to the workspace."})
         usage, _ = TaskUsage.objects.update_or_create(
             task_id=task_id,
             provider=provider,

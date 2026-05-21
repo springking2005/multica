@@ -46,16 +46,20 @@ class AgentSerializer(serializers.ModelSerializer):
 
 
 class AgentCreateSerializer(AgentSerializer):
+    daemon_id = serializers.UUIDField(required=True, write_only=True)
     daemon = serializers.HiddenField(default=None)
     skill_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False, write_only=True
     )
 
     class Meta(AgentSerializer.Meta):
-        fields = AgentSerializer.Meta.fields + ["daemon", "skill_ids"]
+        fields = [
+            field for field in AgentSerializer.Meta.fields if field != "daemon_id"
+        ] + ["daemon_id", "daemon", "skill_ids"]
 
     def create(self, validated_data):
         skill_ids = validated_data.pop("skill_ids", [])
+        validated_data.pop("daemon_id", None)
         agent = Agent.objects.create(**validated_data)
         for skill_id in skill_ids:
             AgentSkill.objects.get_or_create(agent=agent, skill_id=skill_id)

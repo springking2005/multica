@@ -4,15 +4,22 @@ import uuid
 
 import pytest
 
-from accounts.models import Daemon, Workspace
+from accounts.models import Daemon, Member, User, Workspace
 from agents.models import Agent
 from autopilots.models import Autopilot, AutopilotRun, AutopilotTrigger
 
 
 @pytest.fixture
-def workspace() -> Workspace:
+def user() -> User:
+    return User.objects.create_user(email=f"auto-{uuid.uuid4().hex[:8]}@example.com", name="Autopilot User")
+
+
+@pytest.fixture
+def workspace(user) -> Workspace:
     slug = f"test-{uuid.uuid4().hex[:8]}"
-    return Workspace.objects.create(name="Test Workspace", slug=slug)
+    workspace = Workspace.objects.create(name="Test Workspace", slug=slug)
+    Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+    return workspace
 
 
 @pytest.fixture

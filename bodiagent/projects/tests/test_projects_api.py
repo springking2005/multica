@@ -3,32 +3,38 @@ import uuid
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.models import User, Workspace
+from accounts.models import Member, User, Workspace
 from projects.models import Project, ProjectResource
 
 
 @pytest.fixture
-def api_client() -> APIClient:
+def user() -> User:
+    return User.objects.create_user(email=f"{uuid.uuid4()}@example.com", password="password", name="Tester")
+
+
+@pytest.fixture
+def api_client(user: User) -> APIClient:
     client = APIClient()
-    user = User.objects.create_user(email=f"{uuid.uuid4()}@example.com", password="password", name="Tester")
     client.force_authenticate(user=user)
     return client
 
 
 @pytest.fixture
-def workspace() -> Workspace:
+def workspace(user: User) -> Workspace:
     suffix = uuid.uuid4().hex[:8]
-    return Workspace.objects.create(name=f"Workspace {suffix}", slug=f"workspace-{suffix}")
+    workspace = Workspace.objects.create(name=f"Workspace {suffix}", slug=f"workspace-{suffix}")
+    Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+    return workspace
 
 
-def test_project_crud_and_search(api_client: APIClient, workspace: Workspace):
+def test_project_crud_and_search(api_client: APIClient, workspace: Workspace, user: User):
     response = api_client.post(
         "/api/projects",
         {
             "title": "Launch automation",
             "icon": "rocket",
             "lead_type": "member",
-            "lead_id": str(uuid.uuid4()),
+            "lead_id": str(Member.objects.get(workspace=workspace, user=user).id),
             "priority": "high",
         },
         format="json",
@@ -70,9 +76,10 @@ def test_project_crud_and_search(api_client: APIClient, workspace: Workspace):
     assert Project.objects.filter(id=project_id).exists() is False
 
 
-def test_projects_are_workspace_scoped(api_client: APIClient):
+def test_projects_are_workspace_scoped(api_client: APIClient, user: User):
     workspace_a = Workspace.objects.create(name="A", slug=f"a-{uuid.uuid4().hex[:8]}")
     workspace_b = Workspace.objects.create(name="B", slug=f"b-{uuid.uuid4().hex[:8]}")
+    Member.objects.create(workspace=workspace_a, user=user, role=Member.ROLE_OWNER)
     project = Project.objects.create(workspace=workspace_a, title="Scoped")
     Project.objects.create(workspace=workspace_b, title="Hidden")
 
@@ -84,11 +91,12 @@ def test_projects_are_workspace_scoped(api_client: APIClient):
 
 def test_project_resource_round_trips_resource_id(api_client: APIClient, workspace: Workspace):
     project = Project.objects.create(workspace=workspace, title="Project")
-    issue_id = uuid.uuid4()
+    resource_project = Project.objects.create(workspace=workspace, title="Linked")
+    issue_id = resource_project.id
 
     create_response = api_client.post(
         f"/api/projects/{project.id}/resources",
-        {"resource_type": "issue", "resource_id": str(issue_id), "label": "Primary issue"},
+        {"resource_type": "project", "resource_id": str(issue_id), "label": "Primary project"},
         format="json",
         HTTP_X_WORKSPACE_ID=str(workspace.id),
     )

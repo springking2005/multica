@@ -1,15 +1,12 @@
 """E2E tests for inbox: items created on assignment/status change, mark read, archive, counts."""
 
-import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from accounts.models import Daemon, Member, Workspace
-from agents.models import Agent
+from accounts.models import Member, Workspace
 from inbox.models import InboxItem
-from issues.models import Issue
 
 User = get_user_model()
 
@@ -22,7 +19,7 @@ class TestInboxFlow:
     def setup(self, db):
         self.user = User.objects.create_user(email="inboxuser@example.com", name="Inbox User")
         self.workspace = Workspace.objects.create(name="Inbox WS", slug="inbox-ws", issue_prefix="INB")
-        Member.objects.create(workspace=self.workspace, user=self.user, role=Member.ROLE_OWNER)
+        self.member = Member.objects.create(workspace=self.workspace, user=self.user, role=Member.ROLE_OWNER)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         self.client.defaults["HTTP_X_WORKSPACE_ID"] = str(self.workspace.id)
@@ -31,7 +28,7 @@ class TestInboxFlow:
         defaults = {
             "title": "Test issue",
             "creator_type": "member",
-            "creator_id": self.user.id,
+            "creator_id": self.member.id,
         }
         defaults.update(kwargs)
         resp = self.client.post("/api/issues", defaults, format="json")
@@ -56,7 +53,7 @@ class TestInboxFlow:
         InboxItem.objects.create(
             workspace=self.workspace,
             recipient_type="member",
-            recipient_id=self.user.id,
+            recipient_id=self.member.id,
             type="issue_assigned",
             severity="info",
             title="Test notification",
@@ -71,7 +68,7 @@ class TestInboxFlow:
         InboxItem.objects.create(
             workspace=self.workspace,
             recipient_type="member",
-            recipient_id=self.user.id,
+            recipient_id=self.member.id,
             type="status_changed",
             severity="info",
             title="Status update",
@@ -87,7 +84,7 @@ class TestInboxFlow:
         item = InboxItem.objects.create(
             workspace=self.workspace,
             recipient_type="member",
-            recipient_id=self.user.id,
+            recipient_id=self.member.id,
             type="new_comment",
             severity="info",
             title="New comment on issue",

@@ -13,10 +13,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from accounts.models import Member
-
-
-class CreatedAtCursorPagination(pagination.CursorPagination):
-    ordering = "-created_at"
+from accounts.workspace_scope import resolve_workspace_id, validate_actor_ref
 
 from .models import Autopilot, AutopilotRun, AutopilotTrigger
 from .serializers import (
@@ -31,27 +28,17 @@ from .serializers import (
 from .services import AutopilotService
 
 
+class CreatedAtCursorPagination(pagination.CursorPagination):
+    ordering = "-created_at"
+
+
 class WorkspaceScopedMixin:
-    """Resolve workspace scope from middleware/header/query."""
+    """Resolve workspace scope and enforce membership."""
 
     request: Request
 
     def get_workspace_id(self) -> UUID:
-        raw_workspace_id = (
-            getattr(self.request, "workspace_id", None)
-            or self.request.headers.get("X-Workspace-ID")
-            or self.request.query_params.get("ws_id")
-        )
-        if not raw_workspace_id:
-            raise ValidationError(
-                {"workspace_id": "X-Workspace-ID header or ws_id query parameter is required."}
-            )
-        try:
-            return UUID(str(raw_workspace_id))
-        except ValueError as exc:
-            raise ValidationError(
-                {"workspace_id": "Workspace id must be a valid UUID."}
-            ) from exc
+        return resolve_workspace_id(self.request)
 
 
 class AutopilotViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
@@ -72,13 +59,28 @@ class AutopilotViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
             return AutopilotCreateSerializer
         return AutopilotSerializer
 
+    def _validate_autopilot_refs(self, attrs: dict) -> None:
+        workspace_id = self.get_workspace_id()
+        assignee = attrs.get("assignee")
+        if assignee and assignee.workspace_id != workspace_id:
+            raise ValidationError({"assignee": "Assignee must belong to the workspace."})
+        created_by_type = attrs.get("created_by_type")
+        created_by_id = attrs.get("created_by_id")
+        if created_by_type or created_by_id:
+            validate_actor_ref(created_by_type, created_by_id, workspace_id, required=True)
+
     def perform_create(self, serializer: AutopilotCreateSerializer) -> None:
         workspace_id = self.get_workspace_id()
+        self._validate_autopilot_refs(serializer.validated_data)
         membership = Member.objects.filter(workspace_id=workspace_id, user=self.request.user).first()
         defaults = {"workspace_id": workspace_id}
         if membership is not None:
             defaults.update(created_by_type="member", created_by_id=membership.id)
         serializer.save(**defaults)
+
+    def perform_update(self, serializer: AutopilotCreateSerializer) -> None:
+        self._validate_autopilot_refs(serializer.validated_data)
+        serializer.save()
 
     def update(self, request: Request, *args, **kwargs) -> Response:
         kwargs["partial"] = True

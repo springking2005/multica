@@ -4,12 +4,14 @@ from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     Daemon,
     DaemonToken,
+    DaemonWorkspaceBinding,
     Invitation,
     Member,
     NotificationPreference,
@@ -130,6 +132,7 @@ class AuthResponseSerializer(serializers.Serializer):
 
 class WorkspaceSerializer(serializers.ModelSerializer):
     icon = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    slug = serializers.SlugField(required=False, allow_blank=True, max_length=80)
 
     class Meta:
         model = Workspace
@@ -149,8 +152,19 @@ class WorkspaceSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "issue_counter", "created_at", "updated_at")
 
+    def _generate_slug(self, name: str) -> str:
+        base = slugify(name)[:70].strip("-") or "workspace"
+        candidate = base
+        suffix = 2
+        while Workspace.objects.filter(slug=candidate).exists():
+            candidate = f"{base[:70 - len(str(suffix)) - 1]}-{suffix}"
+            suffix += 1
+        return candidate
+
     def create(self, validated_data):
         validated_data.pop("icon", None)
+        if not validated_data.get("slug"):
+            validated_data["slug"] = self._generate_slug(validated_data.get("name", ""))
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
@@ -285,6 +299,13 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "updated_at")
 
 
+class DaemonWorkspaceBindingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DaemonWorkspaceBinding
+        fields = ("id", "daemon", "workspace", "created_by", "revoked_at", "created_at")
+        read_only_fields = fields
+
+
 class DaemonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Daemon
@@ -311,29 +332,49 @@ class DaemonRegisterSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         machine_id = validated_data["machine_id"]
-        daemon, _ = Daemon.objects.update_or_create(
+        existing = Daemon.objects.filter(machine_id=machine_id).first()
+        request = self.context.get("request")
+        auth_header = request.headers.get("Authorization", "") if request is not None else ""
+        if existing is not None or auth_header:
+            from .workspace_scope import resolve_daemon_from_request
+
+            daemon = resolve_daemon_from_request(request)
+            if existing is None:
+                raise serializers.ValidationError({"machine_id": "machine_id does not match daemon token."})
+            if daemon.id != existing.id:
+                raise serializers.ValidationError({"machine_id": "machine_id already belongs to another daemon."})
+            for field in ("device_name", "available_providers"):
+                if field in validated_data:
+                    setattr(daemon, field, validated_data[field])
+            daemon.last_heartbeat = timezone.now()
+            daemon.save(update_fields=["device_name", "available_providers", "last_heartbeat", "updated_at"])
+            token, raw = DaemonToken.issue(daemon)
+            return {"daemon": daemon, "token": raw}
+
+        daemon = Daemon.objects.create(
             machine_id=machine_id,
-            defaults={
-                "device_name": validated_data.get("device_name", ""),
-                "available_providers": validated_data.get("available_providers", []),
-                "last_heartbeat": timezone.now(),
-                "updated_at": timezone.now(),
-            },
+            device_name=validated_data.get("device_name", ""),
+            available_providers=validated_data.get("available_providers", []),
+            last_heartbeat=timezone.now(),
         )
         token, raw = DaemonToken.issue(daemon)
         return {"daemon": daemon, "token": raw}
 
 
 class DaemonHeartbeatSerializer(serializers.Serializer):
-    machine_id = serializers.UUIDField()
+    machine_id = serializers.UUIDField(required=False)
+    providers = serializers.ListField(child=serializers.CharField(), required=False, source="available_providers")
 
-    def validate_machine_id(self, value):
-        try:
-            daemon = Daemon.objects.get(machine_id=value)
-        except Daemon.DoesNotExist:
-            raise serializers.ValidationError("Unknown machine_id")
+    def validate(self, attrs):
+        request = self.context.get("request")
+        from .workspace_scope import resolve_daemon_from_request
+
+        daemon = resolve_daemon_from_request(request)
+        machine_id = attrs.get("machine_id")
+        if machine_id and machine_id != daemon.machine_id:
+            raise serializers.ValidationError({"machine_id": "machine_id does not match daemon token."})
         self.context["daemon"] = daemon
-        return value
+        return attrs
 
 
 class DaemonTokenSerializer(serializers.ModelSerializer):

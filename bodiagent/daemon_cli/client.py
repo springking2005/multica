@@ -81,6 +81,7 @@ class DaemonClient:
                 "device_name": device_name,
                 "providers": providers,
             },
+            headers=self._auth_headers() if self.token else None,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -90,7 +91,7 @@ class DaemonClient:
 
     async def deregister(self) -> None:
         """POST /api/daemon/deregister"""
-        resp = await self.http.post("/api/daemon/deregister")
+        resp = await self.http.post("/api/daemon/deregister", headers=self._auth_headers())
         resp.raise_for_status()
 
     async def heartbeat(self) -> dict[str, Any]:
@@ -98,6 +99,7 @@ class DaemonClient:
         resp = await self.http.post(
             "/api/daemon/heartbeat",
             json={"machine_id": str(self.machine_id)},
+            headers=self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -109,6 +111,7 @@ class DaemonClient:
         resp = await self.http.post(
             "/api/daemon/tasks/claim",
             json={"daemon_id": self.daemon_id},
+            headers=self._auth_headers(),
         )
         if resp.status_code in (204, 404):
             return None
@@ -117,13 +120,13 @@ class DaemonClient:
 
     async def list_pending_tasks(self) -> list[dict[str, Any]]:
         """GET /api/daemon/tasks/pending"""
-        resp = await self.http.get("/api/daemon/tasks/pending")
+        resp = await self.http.get("/api/daemon/tasks/pending", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 
     async def task_start(self, task_id: UUID) -> None:
         """POST /api/daemon/tasks/{task_id}/start"""
-        resp = await self.http.post(f"/api/daemon/tasks/{task_id}/start")
+        resp = await self.http.post(f"/api/daemon/tasks/{task_id}/start", headers=self._auth_headers())
         resp.raise_for_status()
 
     async def task_progress(self, task_id: UUID, step: str, message: str, percent: float | None = None) -> None:
@@ -135,7 +138,7 @@ class DaemonClient:
         }
         if percent is not None:
             payload["metadata"]["percent"] = percent
-        resp = await self.http.post(f"/api/daemon/tasks/{task_id}/progress", json=payload)
+        resp = await self.http.post(f"/api/daemon/tasks/{task_id}/progress", json=payload, headers=self._auth_headers())
         resp.raise_for_status()
 
     async def task_complete(
@@ -148,6 +151,7 @@ class DaemonClient:
         resp = await self.http.post(
             f"/api/daemon/tasks/{task_id}/complete",
             json={"result": {"summary": summary, "artifacts": artifacts or []}},
+            headers=self._auth_headers(),
         )
         resp.raise_for_status()
 
@@ -156,6 +160,7 @@ class DaemonClient:
         resp = await self.http.post(
             f"/api/daemon/tasks/{task_id}/fail",
             json={"failure_reason": f"{error}\n{detail}".strip()},
+            headers=self._auth_headers(),
         )
         resp.raise_for_status()
 
@@ -181,12 +186,13 @@ class DaemonClient:
                 "cache_read_tokens": cache_read_tokens,
                 "cache_write_tokens": cache_write_tokens,
             },
+            headers=self._auth_headers(),
         )
         resp.raise_for_status()
 
     async def task_status(self, task_id: UUID) -> dict[str, Any]:
         """GET /api/daemon/tasks/{task_id}/status"""
-        resp = await self.http.get(f"/api/daemon/tasks/{task_id}/status")
+        resp = await self.http.get(f"/api/daemon/tasks/{task_id}/status", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 
@@ -201,12 +207,13 @@ class DaemonClient:
         resp = await self.http.post(
             f"/api/daemon/tasks/{task_id}/messages",
             json={"messages": normalized},
+            headers=self._auth_headers(),
         )
         resp.raise_for_status()
 
     async def get_task_messages(self, task_id: UUID) -> list[dict[str, Any]]:
         """GET /api/daemon/tasks/{task_id}/messages"""
-        resp = await self.http.get(f"/api/daemon/tasks/{task_id}/messages")
+        resp = await self.http.get(f"/api/daemon/tasks/{task_id}/messages", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 
@@ -215,42 +222,43 @@ class DaemonClient:
         resp = await self.http.post(
             f"/api/daemon/tasks/{task_id}/session",
             json={"session_id": session_id},
+            headers=self._auth_headers(),
         )
         resp.raise_for_status()
 
     async def workspace_repos(self, workspace_id: UUID) -> list[dict[str, Any]]:
         """GET /api/daemon/workspaces/{workspace_id}/repos"""
-        resp = await self.http.get(f"/api/daemon/workspaces/{workspace_id}/repos")
+        resp = await self.http.get(f"/api/daemon/workspaces/{workspace_id}/repos", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 
     async def gc_check_issue(self, issue_id: UUID) -> dict[str, Any]:
         """GET /api/daemon/issues/{issue_id}/gc-check"""
-        resp = await self.http.get(f"/api/daemon/issues/{issue_id}/gc-check")
+        resp = await self.http.get(f"/api/daemon/issues/{issue_id}/gc-check", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 
     async def gc_check_chat(self, session_id: UUID) -> dict[str, Any]:
         """GET /api/daemon/chat-sessions/{session_id}/gc-check"""
-        resp = await self.http.get(f"/api/daemon/chat-sessions/{session_id}/gc-check")
+        resp = await self.http.get(f"/api/daemon/chat-sessions/{session_id}/gc-check", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 
     async def gc_check_autopilot(self, run_id: UUID) -> dict[str, Any]:
         """GET /api/daemon/autopilot-runs/{run_id}/gc-check"""
-        resp = await self.http.get(f"/api/daemon/autopilot-runs/{run_id}/gc-check")
+        resp = await self.http.get(f"/api/daemon/autopilot-runs/{run_id}/gc-check", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 
     async def gc_check_task(self, task_id: UUID) -> dict[str, Any]:
         """GET /api/daemon/tasks/{task_id}/gc-check"""
-        resp = await self.http.get(f"/api/daemon/tasks/{task_id}/gc-check")
+        resp = await self.http.get(f"/api/daemon/tasks/{task_id}/gc-check", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 
     async def recover_orphans(self) -> dict[str, Any]:
         """POST /api/daemon/recover-orphans"""
-        resp = await self.http.post("/api/daemon/recover-orphans", json={})
+        resp = await self.http.post("/api/daemon/recover-orphans", json={}, headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json()
 

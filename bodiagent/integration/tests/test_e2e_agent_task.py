@@ -10,7 +10,7 @@ import uuid
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.models import Daemon, Member, Workspace
+from accounts.models import Daemon, DaemonToken, DaemonWorkspaceBinding, Member, Workspace
 from agents.models import Agent, Task
 from issues.models import Issue
 
@@ -35,6 +35,8 @@ class TestAgentTaskLifecycle:
         self.workspace = Workspace.objects.create(name="Agent WS", slug="agent-ws", issue_prefix="BOT")
         Member.objects.create(workspace=self.workspace, user=self.user, role=Member.ROLE_OWNER)
         self.daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="bot-daemon")
+        self.daemon_token, self.daemon_raw_token = DaemonToken.issue(self.daemon)
+        DaemonWorkspaceBinding.objects.create(daemon=self.daemon, workspace=self.workspace, created_by=self.user)
         self.agent = Agent.objects.create(
             workspace=self.workspace,
             daemon=self.daemon,
@@ -81,7 +83,9 @@ class TestAgentTaskLifecycle:
         )
 
         # Claim via daemon endpoint (DaemonControlView — AllowAny, works correctly)
-        claim_resp = APIClient().post(
+        daemon_client = APIClient()
+        daemon_client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.daemon_raw_token}")
+        claim_resp = daemon_client.post(
             "/api/daemon/tasks/claim",
             {"daemon_id": str(self.daemon.id), "session_id": "session-1", "work_dir": "/tmp/bot"},
             format="json",
@@ -98,20 +102,20 @@ class TestAgentTaskLifecycle:
         task.refresh_from_db()
         assert task.status == Task.Status.DISPATCHED
 
-        start_resp = APIClient().post(f"/api/daemon/tasks/{task.id}/start", {}, format="json")
+        start_resp = daemon_client.post(f"/api/daemon/tasks/{task.id}/start", {}, format="json")
         assert start_resp.status_code == 200, start_resp.data
         task.refresh_from_db()
         assert task.status == Task.Status.RUNNING
         assert task.started_at is not None
 
-        progress_resp = APIClient().post(
+        progress_resp = daemon_client.post(
             f"/api/daemon/tasks/{task.id}/progress",
             {"seq": 1, "type": "status", "content": "running", "metadata": {"step": "executing"}},
             format="json",
         )
         assert progress_resp.status_code == 200, progress_resp.data
 
-        messages_resp = APIClient().post(
+        messages_resp = daemon_client.post(
             f"/api/daemon/tasks/{task.id}/messages",
             {"messages": [{"seq": 2, "type": "text", "content": "done"}]},
             format="json",
@@ -119,7 +123,7 @@ class TestAgentTaskLifecycle:
         assert messages_resp.status_code == 200, messages_resp.data
 
         # Complete
-        complete_resp = APIClient().post(
+        complete_resp = daemon_client.post(
             f"/api/daemon/tasks/{task.id}/complete",
             {"result": {"summary": "Done"}, "branch_name": "feature/bot-fix"},
             format="json",
@@ -131,7 +135,7 @@ class TestAgentTaskLifecycle:
         assert task.result == {"summary": "Done"}
         assert task.messages.count() == 2
 
-        usage_resp = APIClient().post(
+        usage_resp = daemon_client.post(
             f"/api/daemon/tasks/{task.id}/usage",
             {
                 "task_id": str(task.id),
@@ -145,6 +149,34 @@ class TestAgentTaskLifecycle:
         assert usage_resp.status_code == 201, usage_resp.data
         assert usage_resp.data["input_tokens"] == 10
 
+
+    def test_daemon_lifecycle_requires_token(self):
+        task = Task.objects.create(
+            agent=self.agent,
+            daemon=self.daemon,
+            issue=self.issue,
+            status=Task.Status.QUEUED,
+            priority=0,
+        )
+
+        anonymous = APIClient()
+        claim_resp = anonymous.post(
+            "/api/daemon/tasks/claim",
+            {"daemon_id": str(self.daemon.id)},
+            format="json",
+        )
+        assert claim_resp.status_code in (401, 403)
+
+        start_resp = anonymous.post(f"/api/daemon/tasks/{task.id}/start", {}, format="json")
+        assert start_resp.status_code in (401, 403)
+
+        other_daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="other")
+        _token, raw = DaemonToken.issue(other_daemon)
+        wrong_client = APIClient()
+        wrong_client.credentials(HTTP_AUTHORIZATION=f"Bearer {raw}")
+        wrong_resp = wrong_client.post(f"/api/daemon/tasks/{task.id}/start", {}, format="json")
+        assert wrong_resp.status_code == 400
+
     def test_task_failure_flow(self):
         """Task lifecycle ending in failure with failure_reason."""
         from django.utils import timezone
@@ -157,7 +189,9 @@ class TestAgentTaskLifecycle:
         )
 
         # Claim via daemon endpoint
-        APIClient().post(
+        daemon_client = APIClient()
+        daemon_client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.daemon_raw_token}")
+        daemon_client.post(
             "/api/daemon/tasks/claim",
             {"daemon_id": str(self.daemon.id)},
             format="json",

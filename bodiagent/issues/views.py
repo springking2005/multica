@@ -6,13 +6,21 @@ from uuid import UUID
 
 from django.db import transaction
 from django.db.models import Q, QuerySet
-from django.http import Http404, FileResponse
+from django.http import Http404
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
+
+from accounts.workspace_scope import (
+    resolve_workspace_id,
+    resolve_workspace_member,
+    validate_actor_ref,
+    validate_issue_id,
+    validate_project_id,
+)
 
 from .models import (
     Attachment,
@@ -21,7 +29,6 @@ from .models import (
     Issue,
     IssueDependency,
     IssueLabel,
-    IssueReaction,
     IssueSubscriber,
     IssueToLabel,
 )
@@ -31,11 +38,9 @@ from .serializers import (
     CommentResolveSerializer,
     CommentSerializer,
     IssueBatchUpdateSerializer,
-    IssueChildrenSerializer,
     IssueCreateSerializer,
     IssueDependencySerializer,
     IssueLabelSerializer,
-    IssueReactionSerializer,
     IssueReorderSerializer,
     IssueSerializer,
     IssueSubscriberSerializer,
@@ -44,26 +49,12 @@ from .serializers import (
 
 
 class WorkspaceScopedMixin:
-    """Resolve workspace scope from middleware/header/query."""
+    """Resolve workspace scope and enforce membership."""
 
     request: Request
 
     def get_workspace_id(self) -> UUID:
-        raw_workspace_id = (
-            getattr(self.request, "workspace_id", None)
-            or self.request.headers.get("X-Workspace-ID")
-            or self.request.query_params.get("ws_id")
-        )
-        if not raw_workspace_id:
-            raise ValidationError(
-                {"workspace_id": "X-Workspace-ID header or ws_id query parameter is required."}
-            )
-        try:
-            return UUID(str(raw_workspace_id))
-        except ValueError as exc:
-            raise ValidationError(
-                {"workspace_id": "Workspace id must be a valid UUID."}
-            ) from exc
+        return resolve_workspace_id(self.request)
 
 
 class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
@@ -81,11 +72,27 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
             return IssueCreateSerializer
         return IssueSerializer
 
+    def _validate_issue_refs(self, attrs: dict) -> None:
+        workspace_id = self.get_workspace_id()
+        project = attrs.get("project")
+        if project and project.workspace_id != workspace_id:
+            raise ValidationError({"project": "Project must belong to the workspace."})
+        parent_issue = attrs.get("parent_issue")
+        if parent_issue and parent_issue.workspace_id != workspace_id:
+            raise ValidationError({"parent_issue": "Parent issue must belong to the workspace."})
+        assignee_type = attrs.get("assignee_type")
+        assignee_id = attrs.get("assignee_id")
+        if assignee_type or assignee_id:
+            validate_actor_ref(assignee_type, assignee_id, workspace_id, required=True)
+
     def perform_create(self, serializer: IssueCreateSerializer) -> None:
+        workspace_id = self.get_workspace_id()
+        member = resolve_workspace_member(self.request, workspace_id)
+        self._validate_issue_refs(serializer.validated_data)
         serializer.save(
-            workspace_id=self.get_workspace_id(),
-            creator_type="user",
-            creator_id=self.request.user.id,
+            workspace_id=workspace_id,
+            creator_type="member",
+            creator_id=member.id,
         )
 
     def list(self, request: Request, *args, **kwargs) -> Response:
@@ -140,6 +147,10 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    def perform_update(self, serializer: IssueSerializer) -> None:
+        self._validate_issue_refs(serializer.validated_data)
+        serializer.save()
+
     def update(self, request: Request, *args, **kwargs) -> Response:
         kwargs["partial"] = True
         return super().update(request, *args, **kwargs)
@@ -157,6 +168,11 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
 
         ids = data.pop("ids")
         project_id = data.pop("project_id", None)
+        workspace_id = self.get_workspace_id()
+        if project_id is not None:
+            validate_project_id(project_id, workspace_id)
+        if data.get("assignee_type") or data.get("assignee_id"):
+            validate_actor_ref(data.get("assignee_type"), data.get("assignee_id"), workspace_id, required=True)
         update_fields = {}
 
         for key, value in data.items():
@@ -172,7 +188,7 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
             )
 
         updated = Issue.objects.filter(
-            id__in=ids, workspace_id=self.get_workspace_id()
+            id__in=ids, workspace_id=workspace_id
         ).update(**update_fields)
         return Response({"updated": updated})
 
@@ -185,8 +201,6 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         existing = Issue.objects.filter(
             id__in=list(items.keys()), workspace_id=self.get_workspace_id()
         )
-        existing_ids = set(str(i.id) for i in existing)
-
         with transaction.atomic():
             updated = 0
             for issue in existing:
@@ -215,6 +229,12 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         elif request.method == "POST":
             serializer = IssueSubscriberSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
+            validate_actor_ref(
+                serializer.validated_data.get("subscriber_type"),
+                serializer.validated_data.get("subscriber_id"),
+                self.get_workspace_id(),
+                required=True,
+            )
             serializer.save(issue=issue)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         elif request.method == "DELETE":
@@ -225,6 +245,7 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
                     {"detail": "subscriber_type and subscriber_id are required."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            validate_actor_ref(subscriber_type, subscriber_id, self.get_workspace_id(), required=True)
             IssueSubscriber.objects.filter(
                 issue=issue,
                 subscriber_type=subscriber_type,
@@ -242,6 +263,8 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         elif request.method == "POST":
             serializer = IssueDependencySerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
+            if serializer.validated_data["depends_on"].workspace_id != self.get_workspace_id():
+                raise ValidationError({"depends_on": "Dependency issue must belong to the workspace."})
             serializer.save(issue=issue)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         elif request.method == "DELETE":
@@ -251,6 +274,7 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
                     {"detail": "depends_on is required."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            validate_issue_id(dep_id, self.get_workspace_id(), field_name="depends_on")
             IssueDependency.objects.filter(
                 issue=issue, depends_on_id=dep_id
             ).delete()
@@ -307,20 +331,23 @@ class CommentViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer: CommentSerializer) -> None:
         issue_id = self.kwargs.get("issue_id")
+        workspace_id = self.get_workspace_id()
         if issue_id:
             try:
-                issue = Issue.objects.get(
-                    id=issue_id, workspace_id=self.get_workspace_id()
-                )
+                issue = Issue.objects.get(id=issue_id, workspace_id=workspace_id)
             except Issue.DoesNotExist:
                 raise Http404("Issue not found")
         else:
             raise ValidationError({"issue_id": "issue_id URL parameter is required."})
+        parent = serializer.validated_data.get("parent")
+        if parent and (parent.workspace_id != workspace_id or parent.issue_id != issue.id):
+            raise ValidationError({"parent": "Parent comment must belong to the same issue and workspace."})
+        member = resolve_workspace_member(self.request, workspace_id)
         serializer.save(
             issue=issue,
-            workspace_id=self.get_workspace_id(),
-            author_type="user",
-            author_id=self.request.user.id,
+            workspace_id=workspace_id,
+            author_type="member",
+            author_id=member.id,
         )
 
     def destroy(self, request: Request, *args, **kwargs) -> Response:
@@ -329,21 +356,26 @@ class CommentViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         return Response({"ok": True})
 
     @action(detail=True, methods=["post"], url_path="resolve")
-    def resolve(self, request: Request, comment_id: UUID = None) -> Response:
+    def resolve(self, request: Request, comment_id: UUID = None, **kwargs) -> Response:
         comment = self.get_object()
         serializer = CommentResolveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         resolved_at = serializer.validated_data.get("resolved_at") or timezone.now()
+        workspace_id = self.get_workspace_id()
+        default_member = resolve_workspace_member(request, workspace_id)
+        resolved_by_type = request.data.get("resolved_by_type", "member")
+        resolved_by_id = request.data.get("resolved_by_id") or default_member.id
+        validate_actor_ref(resolved_by_type, resolved_by_id, workspace_id, required=True)
         comment.resolved_at = resolved_at
-        comment.resolved_by_type = request.data.get("resolved_by_type", "member")
-        comment.resolved_by_id = request.data.get("resolved_by_id")
+        comment.resolved_by_type = resolved_by_type
+        comment.resolved_by_id = resolved_by_id
         comment.save(update_fields=["resolved_at", "resolved_by_type", "resolved_by_id", "updated_at"])
 
         return Response(CommentSerializer(comment).data)
 
     @action(detail=True, methods=["get", "post"], url_path="reactions")
-    def reactions(self, request: Request, comment_id: UUID = None) -> Response:
+    def reactions(self, request: Request, comment_id: UUID = None, **kwargs) -> Response:
         comment = self.get_object()
         if request.method == "GET":
             reactions = CommentReaction.objects.filter(comment=comment)
@@ -352,6 +384,12 @@ class CommentViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         elif request.method == "POST":
             serializer = CommentReactionSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
+            validate_actor_ref(
+                serializer.validated_data.get("actor_type"),
+                serializer.validated_data.get("actor_id"),
+                self.get_workspace_id(),
+                required=True,
+            )
             serializer.save(comment=comment)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -384,11 +422,26 @@ class AttachmentViewSet(WorkspaceScopedMixin, viewsets.GenericViewSet):
     serializer_class = AttachmentSerializer
 
     def get_queryset(self) -> QuerySet[Attachment]:
-        return Attachment.objects.all()
+        return Attachment.objects.filter(
+            Q(issue__workspace_id=self.get_workspace_id()) | Q(comment__workspace_id=self.get_workspace_id())
+        )
 
     def create(self, request: Request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        issue = serializer.validated_data.get("issue")
+        comment = serializer.validated_data.get("comment")
+        workspace_id = self.get_workspace_id()
+        if issue and issue.workspace_id != workspace_id:
+            raise ValidationError({"issue": "Issue must belong to the workspace."})
+        if comment and comment.workspace_id != workspace_id:
+            raise ValidationError({"comment": "Comment must belong to the workspace."})
+        validate_actor_ref(
+            serializer.validated_data.get("uploader_type"),
+            serializer.validated_data.get("uploader_id"),
+            workspace_id,
+            required=True,
+        )
         instance = serializer.save()
         return Response(
             AttachmentSerializer(instance).data, status=status.HTTP_201_CREATED

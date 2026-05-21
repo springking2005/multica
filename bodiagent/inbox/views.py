@@ -5,19 +5,22 @@ from __future__ import annotations
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, QuerySet
+from django.db.models import QuerySet
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
+
+from accounts.workspace_scope import (
+    resolve_workspace_id,
+    resolve_workspace_member,
+    validate_pin_target,
+)
 
 from .models import Activity, InboxItem, Pin
 from .serializers import (
     ActivitySerializer,
     CreatePinSerializer,
-    InboxItemArchiveSerializer,
-    InboxItemReadSerializer,
     InboxItemSerializer,
     PinSerializer,
     ReorderPinsSerializer,
@@ -27,22 +30,12 @@ User = get_user_model()
 
 
 class WorkspaceScopedMixin:
-    """Resolve workspace scope from middleware/header/query."""
+    """Resolve workspace scope and enforce membership."""
 
     request: Request
 
     def get_workspace_id(self) -> UUID:
-        raw_workspace_id = (
-            getattr(self.request, "workspace_id", None)
-            or self.request.headers.get("X-Workspace-ID")
-            or self.request.query_params.get("ws_id")
-        )
-        if not raw_workspace_id:
-            raise ValidationError({"workspace_id": "X-Workspace-ID header or ws_id query parameter is required."})
-        try:
-            return UUID(str(raw_workspace_id))
-        except ValueError as exc:
-            raise ValidationError({"workspace_id": "Workspace id must be a valid UUID."}) from exc
+        return resolve_workspace_id(self.request)
 
 
 class InboxViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
@@ -58,7 +51,10 @@ class InboxViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         qs = InboxItem.objects.filter(workspace_id=ws_id)
         # Filter by recipient — default to the authenticated user as member.
         recipient_type = self.request.query_params.get("recipient_type", "member")
-        recipient_id = self.request.query_params.get("recipient_id") or str(self.request.user.id)
+        default_recipient_id = ""
+        if recipient_type == "member":
+            default_recipient_id = str(resolve_workspace_member(self.request, ws_id).id)
+        recipient_id = self.request.query_params.get("recipient_id") or default_recipient_id
         qs = qs.filter(recipient_type=recipient_type, recipient_id=recipient_id)
         # Optional filters.
         if "type" in self.request.query_params:
@@ -134,7 +130,10 @@ class InboxViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
     def unread_count(self, request: Request) -> Response:
         ws_id = self.get_workspace_id()
         recipient_type = request.query_params.get("recipient_type", "member")
-        recipient_id = request.query_params.get("recipient_id") or str(request.user.id)
+        default_recipient_id = ""
+        if recipient_type == "member":
+            default_recipient_id = str(resolve_workspace_member(request, ws_id).id)
+        recipient_id = request.query_params.get("recipient_id") or default_recipient_id
         count = InboxItem.objects.filter(
             workspace_id=ws_id,
             recipient_type=recipient_type,
@@ -189,6 +188,8 @@ class PinViewSet(WorkspaceScopedMixin, viewsets.GenericViewSet):
         item_id = serializer.validated_data["item_id"]
         ws_id = self.get_workspace_id()
 
+        validate_pin_target(item_type, item_id, ws_id)
+
         pin, created = Pin.objects.get_or_create(
             workspace_id=ws_id,
             item_type=item_type,
@@ -204,9 +205,11 @@ class PinViewSet(WorkspaceScopedMixin, viewsets.GenericViewSet):
         serializer = ReorderPinsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         item_ids = serializer.validated_data["item_ids"]
+        ws_id = self.get_workspace_id()
         for idx, entry in enumerate(item_ids):
+            validate_pin_target(entry.get("item_type", ""), entry.get("item_id", ""), ws_id)
             Pin.objects.filter(
-                workspace_id=self.get_workspace_id(),
+                workspace_id=ws_id,
                 pinned_by=request.user,
                 item_type=entry.get("item_type", ""),
                 item_id=entry.get("item_id", ""),
@@ -216,6 +219,7 @@ class PinViewSet(WorkspaceScopedMixin, viewsets.GenericViewSet):
     @action(detail=False, methods=["delete"], url_path=r"(?P<item_type>[^/]+)/(?P<item_id>[0-9a-f-]{36})")
     def unpin(self, request: Request, item_type=None, item_id=None) -> Response:
         ws_id = self.get_workspace_id()
+        validate_pin_target(item_type, item_id, ws_id)
         deleted, _ = Pin.objects.filter(
             workspace_id=ws_id,
             pinned_by=request.user,

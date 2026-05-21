@@ -73,4 +73,9 @@ urlpatterns = [
         DaemonTaskLifecycleView.as_view({"get": "get_status"}),
         name="daemon-task-status",
     ),
+    path(
+        "daemon/tasks/<uuid:task_id>/session",
+        DaemonTaskLifecycleView.as_view({"post": "post_session"}),
+        name="daemon-task-session",
+    ),
 ]

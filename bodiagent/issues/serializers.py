@@ -199,7 +199,7 @@ class CommentReactionSerializer(serializers.ModelSerializer):
             "emoji",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "comment", "created_at"]
 
 
 class IssueReactionSerializer(serializers.ModelSerializer):

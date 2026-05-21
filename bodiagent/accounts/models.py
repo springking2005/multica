@@ -256,6 +256,36 @@ class Daemon(TimeStampedModel):
         db_table = "daemon"
 
 
+
+
+class DaemonWorkspaceBinding(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    daemon = models.ForeignKey(Daemon, on_delete=models.CASCADE, related_name="workspace_bindings")
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="daemon_bindings")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="created_daemon_bindings",
+    )
+    revoked_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "daemon_workspace_binding"
+        constraints = [
+            models.UniqueConstraint(fields=["daemon", "workspace"], name="daemon_workspace_binding_unique"),
+        ]
+        indexes = [
+            models.Index(fields=["workspace", "revoked_at"], name="idx_daemon_binding_ws"),
+            models.Index(fields=["daemon", "revoked_at"], name="idx_daemon_binding_daemon"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.daemon_id} @ {self.workspace_id}"
+
+
 class DaemonToken(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     token_hash = models.TextField(unique=True)

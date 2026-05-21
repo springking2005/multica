@@ -1,17 +1,26 @@
 """Accounts, auth, workspace, member, invitation, daemon, and token API views."""
 
 from django.conf import settings
-from django.contrib.auth import get_user_model, login as auth_login
+from django.contrib.auth import get_user_model
+from django.contrib.auth import login as auth_login
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
-from rest_framework.views import APIView
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Daemon, DaemonToken, Invitation, Member, PersonalAccessToken, VerificationCode, Workspace
+from .models import (
+    Daemon,
+    Invitation,
+    Member,
+    PersonalAccessToken,
+    VerificationCode,
+    Workspace,
+)
 from .serializers import (
     AuthResponseSerializer,
     CreateInvitationSerializer,
@@ -19,6 +28,7 @@ from .serializers import (
     DaemonHeartbeatSerializer,
     DaemonRegisterSerializer,
     DaemonSerializer,
+    DaemonWorkspaceBindingSerializer,
     InvitationSerializer,
     LoginSerializer,
     MemberSerializer,
@@ -30,6 +40,12 @@ from .serializers import (
     UserSerializer,
     VerifyCodeSerializer,
     WorkspaceSerializer,
+)
+from .workspace_scope import (
+    bind_daemon_to_workspace,
+    require_workspace_admin,
+    resolve_daemon_from_request,
+    resolve_workspace_id,
 )
 
 User = get_user_model()
@@ -346,10 +362,17 @@ class MemberViewSet(viewsets.ModelViewSet):
     lookup_url_kwarg = "member_id"
 
     def get_queryset(self):
-        return Member.objects.filter(workspace__members__user=self.request.user).select_related("user", "workspace")
+        workspace_id = resolve_workspace_id(self.request, required=False)
+        queryset = Member.objects.filter(workspace__members__user=self.request.user).select_related("user", "workspace")
+        if workspace_id is not None:
+            queryset = queryset.filter(workspace_id=workspace_id)
+        return queryset
 
     def perform_create(self, serializer):
         workspace = serializer.validated_data["workspace"]
+        scoped_workspace_id = resolve_workspace_id(self.request, required=False)
+        if scoped_workspace_id is not None and workspace.id != scoped_workspace_id:
+            raise ValidationError({"workspace_id": "Body workspace must match resolved workspace scope."})
         if not user_is_workspace_admin(self.request.user, workspace):
             self.permission_denied(self.request, message="Admin role required.")
         serializer.save()
@@ -429,9 +452,10 @@ class InvitationViewSet(viewsets.ModelViewSet):
 
 class DaemonRegisterView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
-        serializer = DaemonRegisterSerializer(data=request.data)
+        serializer = DaemonRegisterSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         result = serializer.save()
         daemon = result["daemon"]
@@ -449,46 +473,38 @@ class DaemonRegisterView(APIView):
 
 class DaemonHeartbeatView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
-        serializer = DaemonHeartbeatSerializer(data=request.data)
+        serializer = DaemonHeartbeatSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         daemon = serializer.context["daemon"]
+        if "available_providers" in serializer.validated_data:
+            daemon.available_providers = serializer.validated_data["available_providers"]
         daemon.last_heartbeat = timezone.now()
-        daemon.save(update_fields=["last_heartbeat", "updated_at"])
+        daemon.save(update_fields=["available_providers", "last_heartbeat", "updated_at"])
         return Response({"ok": True})
 
 
-class DaemonViewSet(viewsets.ModelViewSet):
+class DaemonViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = DaemonSerializer
     permission_classes = [IsAuthenticated]
     lookup_url_kwarg = "daemon_id"
-    queryset = Daemon.objects.all().order_by("-created_at")
 
-    @action(detail=False, methods=["post"])
-    def register(self, request):
-        machine_id = request.data.get("machine_id")
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        daemon, _ = Daemon.objects.update_or_create(
-            machine_id=machine_id,
-            defaults={
-                "device_name": serializer.validated_data.get("device_name", ""),
-                "available_providers": serializer.validated_data.get("available_providers", []),
-                "device_info": serializer.validated_data.get("device_info", ""),
-                "metadata": serializer.validated_data.get("metadata", {}),
-                "last_heartbeat": timezone.now(),
-            },
-        )
-        return Response(DaemonSerializer(daemon).data, status=status.HTTP_201_CREATED)
+    def get_queryset(self):
+        workspace_id = resolve_workspace_id(self.request)
+        return Daemon.objects.filter(
+            workspace_bindings__workspace_id=workspace_id,
+            workspace_bindings__revoked_at__isnull=True,
+        ).distinct().order_by("-created_at")
 
-    @action(detail=True, methods=["post"])
-    def heartbeat(self, request, daemon_id=None):
-        daemon = self.get_object()
-        daemon.available_providers = request.data.get("available_providers", daemon.available_providers)
-        daemon.last_heartbeat = timezone.now()
-        daemon.save(update_fields=["available_providers", "last_heartbeat", "updated_at"])
-        return Response(DaemonSerializer(daemon).data)
+    @action(detail=False, methods=["post"], url_path="bind")
+    def bind(self, request):
+        workspace_id = resolve_workspace_id(request)
+        require_workspace_admin(request, workspace_id)
+        daemon = resolve_daemon_from_request(request)
+        binding = bind_daemon_to_workspace(daemon, workspace_id, created_by=request.user)
+        return Response(DaemonWorkspaceBindingSerializer(binding).data, status=status.HTTP_201_CREATED)
 
 
 class PATViewSet(

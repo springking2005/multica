@@ -9,16 +9,26 @@
        x-transition:leave-end="-translate-x-full"
        x-cloak>
   <div class="flex h-full flex-col px-3 py-3">
-    <!-- Workspace name -->
+    <!-- Workspace switcher -->
     <div class="mb-3 rounded-lg bg-gray-50 px-2 py-2">
-      <p class="text-xs font-medium uppercase tracking-wide text-gray-400">当前工作区</p>
-      <p class="mt-1 text-sm font-semibold text-gray-900 truncate">
-        {% if request.workspace %}
-          {{ request.workspace.name }}
-        {% else %}
-          我的工作区
-        {% endif %}
-      </p>
+      <label for="workspace-switcher" class="text-xs font-medium uppercase tracking-wide text-gray-400">当前工作区</label>
+      {% if workspaces %}
+        <form method="get" action="{{ request.path }}" class="mt-1">
+          <select id="workspace-switcher"
+                  name="workspace_id"
+                  class="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-900"
+                  onchange="this.form.submit()"
+                  aria-label="切换工作区">
+            {% for workspace in workspaces %}
+              <option value="{{ workspace.id }}" {% if current_workspace and workspace.id == current_workspace.id %}selected{% endif %}>
+                {{ workspace.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </form>
+      {% else %}
+        <p class="mt-1 text-sm font-semibold text-gray-900 truncate">我的工作区</p>
+      {% endif %}
     </div>
 
     <!-- Navigation items -->

@@ -21,7 +21,7 @@ class TestIssueWorkflow:
     def setup(self, db):
         self.user = User.objects.create_user(email="dev@example.com", name="Dev")
         self.workspace = Workspace.objects.create(name="Dev Workspace", slug="dev-ws", issue_prefix="DEV")
-        Member.objects.create(workspace=self.workspace, user=self.user, role=Member.ROLE_OWNER)
+        self.member = Member.objects.create(workspace=self.workspace, user=self.user, role=Member.ROLE_OWNER)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         self.client.defaults["HTTP_X_WORKSPACE_ID"] = str(self.workspace.id)
@@ -34,7 +34,7 @@ class TestIssueWorkflow:
                 "title": "Status flow test",
                 "status": "backlog",
                 "creator_type": "member",
-                "creator_id": str(self.user.id),
+                "creator_id": str(self.member.id),
             },
             format="json",
         )
@@ -67,7 +67,7 @@ class TestIssueWorkflow:
                 "title": "Implement login",
                 "project": project_id,
                 "creator_type": "member",
-                "creator_id": str(self.user.id),
+                "creator_id": str(self.member.id),
             },
             format="json",
         )
@@ -76,8 +76,8 @@ class TestIssueWorkflow:
 
     def test_assign_issue_to_agent(self):
         """Create issue and assign to an agent."""
-        from agents.models import Agent
         from accounts.models import Daemon
+        from agents.models import Agent
 
         daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="test-daemon")
         agent = Agent.objects.create(
@@ -94,7 +94,7 @@ class TestIssueWorkflow:
                 "assignee_type": "agent",
                 "assignee_id": str(agent.id),
                 "creator_type": "member",
-                "creator_id": str(self.user.id),
+                "creator_id": str(self.member.id),
             },
             format="json",
         )
@@ -109,7 +109,7 @@ class TestIssueWorkflow:
             {
                 "title": "Comment test",
                 "creator_type": "member",
-                "creator_id": str(self.user.id),
+                "creator_id": str(self.member.id),
             },
             format="json",
         )
@@ -121,7 +121,7 @@ class TestIssueWorkflow:
             {
                 "content": "Hey @testuser, please review this",
                 "author_type": "member",
-                "author_id": str(self.user.id),
+                "author_id": str(self.member.id),
             },
             format="json",
         )
@@ -137,7 +137,7 @@ class TestIssueWorkflow:
                 number=i + 1,
                 title=f"Batch issue {i}",
                 creator_type="member",
-                creator_id=self.user.id,
+                creator_id=self.member.id,
             )
             issue_ids.append(str(issue.id))
 
@@ -162,7 +162,7 @@ class TestIssueWorkflow:
                 number=i + 1,
                 title=f"Reorder issue {i}",
                 creator_type="member",
-                creator_id=self.user.id,
+                creator_id=self.member.id,
                 position=float(i),
             )
             issue_ids.append(str(issue.id))
@@ -178,3 +178,61 @@ class TestIssueWorkflow:
         )
         assert reorder_resp.status_code == 200, reorder_resp.data
         assert reorder_resp.data["updated"] == 3
+
+    def test_comment_parent_must_belong_to_same_issue_and_workspace(self):
+        other_workspace = Workspace.objects.create(name="Other WS", slug="other-issue-parent")
+        other_member = Member.objects.create(workspace=other_workspace, user=self.user, role=Member.ROLE_OWNER)
+        other_issue = Issue.objects.create(
+            workspace=other_workspace,
+            number=1,
+            title="Other",
+            creator_type="member",
+            creator_id=other_member.id,
+        )
+        other_comment = Comment.objects.create(
+            workspace=other_workspace,
+            issue=other_issue,
+            author_type="member",
+            author_id=other_member.id,
+            content="Other parent",
+        )
+        issue = Issue.objects.create(
+            workspace=self.workspace,
+            number=99,
+            title="Local",
+            creator_type="member",
+            creator_id=self.member.id,
+        )
+
+        response = self.client.post(
+            f"/api/issues/{issue.id}/comments",
+            {"content": "Bad reply", "parent": str(other_comment.id)},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.data
+
+    def test_comment_reaction_uses_url_comment_without_body_comment(self):
+        issue = Issue.objects.create(
+            workspace=self.workspace,
+            number=100,
+            title="React",
+            creator_type="member",
+            creator_id=self.member.id,
+        )
+        comment = Comment.objects.create(
+            workspace=self.workspace,
+            issue=issue,
+            author_type="member",
+            author_id=self.member.id,
+            content="React here",
+        )
+
+        response = self.client.post(
+            f"/api/issues/{issue.id}/comments/{comment.id}/reactions",
+            {"actor_type": "member", "actor_id": str(self.member.id), "emoji": "+1"},
+            format="json",
+        )
+
+        assert response.status_code == 201, response.data
+        assert str(response.data["comment"]) == str(comment.id)

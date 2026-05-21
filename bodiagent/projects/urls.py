@@ -17,10 +17,13 @@ class NoTrailingSlashRouter(DefaultRouter):
 router = NoTrailingSlashRouter()
 router.register("projects", ProjectViewSet, basename="project")
 
+project_collection_slash = ProjectViewSet.as_view({"get": "list", "post": "create"})
+
 resource_list = ProjectResourceViewSet.as_view({"get": "list", "post": "create"})
 resource_detail = ProjectResourceViewSet.as_view({"delete": "destroy"})
 
 urlpatterns = [
+    path("projects/", project_collection_slash, name="project-list-slash"),
     path("", include(router.urls)),
     path(
         "projects/<uuid:project_id>/resources",

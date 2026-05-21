@@ -8,31 +8,32 @@ from django.db.models import Count, Q, QuerySet
 from django.http import Http404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from accounts.workspace_scope import (
+    resolve_workspace_id,
+    validate_actor_ref,
+    validate_issue_id,
+    validate_project_id,
+)
+
 from .models import Project, ProjectResource
-from .serializers import ProjectResourceCreateSerializer, ProjectResourceSerializer, ProjectSerializer, ProjectUpdateSerializer
+from .serializers import (
+    ProjectResourceCreateSerializer,
+    ProjectResourceSerializer,
+    ProjectSerializer,
+    ProjectUpdateSerializer,
+)
 
 
 class WorkspaceScopedMixin:
-    """Resolve workspace scope from middleware/header/query."""
+    """Resolve workspace scope and enforce membership."""
 
     request: Request
 
     def get_workspace_id(self) -> UUID:
-        raw_workspace_id = (
-            getattr(self.request, "workspace_id", None)
-            or self.request.headers.get("X-Workspace-ID")
-            or self.request.query_params.get("ws_id")
-        )
-        if not raw_workspace_id:
-            raise ValidationError({"workspace_id": "X-Workspace-ID header or ws_id query parameter is required."})
-        try:
-            return UUID(str(raw_workspace_id))
-        except ValueError as exc:
-            raise ValidationError({"workspace_id": "Workspace id must be a valid UUID."}) from exc
+        return resolve_workspace_id(self.request)
 
 
 class ProjectViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
@@ -54,8 +55,22 @@ class ProjectViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
             return ProjectUpdateSerializer
         return ProjectSerializer
 
+    def _validate_project_refs(self, attrs: dict) -> None:
+        if attrs.get("lead_type") or attrs.get("lead_id"):
+            validate_actor_ref(
+                attrs.get("lead_type"),
+                attrs.get("lead_id"),
+                self.get_workspace_id(),
+                required=True,
+            )
+
     def perform_create(self, serializer: ProjectSerializer) -> None:
+        self._validate_project_refs(serializer.validated_data)
         serializer.save(workspace_id=self.get_workspace_id())
+
+    def perform_update(self, serializer: ProjectSerializer) -> None:
+        self._validate_project_refs(serializer.validated_data)
+        serializer.save()
 
     def list(self, request: Request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(self.get_queryset(), many=True)
@@ -110,6 +125,15 @@ class ProjectResourceViewSet(WorkspaceScopedMixin, viewsets.GenericViewSet):
         project = self.get_project()
         serializer = ProjectResourceCreateSerializer(data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
+        resource_type = serializer.validated_data.get("resource_type")
+        resource_ref = serializer.validated_data.get("resource_ref") or {}
+        resource_id = resource_ref.get("id") if isinstance(resource_ref, dict) else None
+        if resource_type == "issue":
+            validate_issue_id(resource_id, project.workspace_id, field_name="resource_id", required=True)
+        elif resource_type == "project":
+            validate_project_id(resource_id, project.workspace_id, field_name="resource_id", required=True)
+        elif resource_type in {"member", "agent"}:
+            validate_actor_ref(resource_type, resource_id, project.workspace_id, required=True)
         instance = serializer.save(project=project, workspace_id=project.workspace_id)
         return Response(ProjectResourceSerializer(instance).data, status=status.HTTP_201_CREATED)
 

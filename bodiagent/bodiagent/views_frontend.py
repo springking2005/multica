@@ -11,22 +11,41 @@ from uuid import UUID
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 
+from accounts.models import Member
+
 
 def _frontend_context(request: HttpRequest, **extra: object) -> dict[str, object]:
     """Build common context for template shells that call workspace-scoped APIs."""
-    workspace_id = getattr(request, "workspace_id", None)
-    workspace = None
+    memberships = []
+    membership: Member | None = None
+
     if request.user.is_authenticated:
-        membership = request.user.memberships.select_related("workspace").order_by("created_at").first()
-        if membership is not None:
-            workspace = membership.workspace
-            workspace_id = workspace_id or str(workspace.id)
+        memberships = list(request.user.memberships.select_related("workspace").order_by("created_at"))
+        memberships_by_workspace = {str(item.workspace_id): item for item in memberships}
+
+        requested_workspace_id = request.GET.get("workspace_id")
+        if requested_workspace_id in memberships_by_workspace:
+            request.session["current_workspace_id"] = requested_workspace_id
+            membership = memberships_by_workspace[requested_workspace_id]
+
+        if membership is None:
+            session_workspace_id = request.session.get("current_workspace_id")
+            if session_workspace_id in memberships_by_workspace:
+                membership = memberships_by_workspace[session_workspace_id]
+
+        if membership is None and memberships:
+            membership = memberships[0]
+            request.session["current_workspace_id"] = str(membership.workspace_id)
+
+    workspace = membership.workspace if membership is not None else None
+    workspace_id = str(workspace.id) if workspace is not None else ""
 
     context: dict[str, object] = {
+        "workspaces": [item.workspace for item in memberships],
         "current_workspace": workspace,
-        "current_workspace_id": workspace_id or "",
+        "current_workspace_id": workspace_id,
         "current_user_id": str(request.user.id) if request.user.is_authenticated else "",
-        "current_member_id": str(membership.id) if request.user.is_authenticated and membership is not None else "",
+        "current_member_id": str(membership.id) if membership is not None else "",
     }
     context.update(extra)
     return context

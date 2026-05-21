@@ -23,6 +23,8 @@ router = NoTrailingSlashRouter()
 router.register("issues", IssueViewSet, basename="issue")
 router.register("labels", IssueLabelViewSet, basename="issuelabel")
 
+issue_collection_slash = IssueViewSet.as_view({"get": "list", "post": "create"})
+
 comment_list = CommentViewSet.as_view({"get": "list", "post": "create"})
 comment_detail = CommentViewSet.as_view(
     {"get": "retrieve", "put": "update", "patch": "partial_update", "delete": "destroy"}
@@ -34,6 +36,7 @@ attachment_list = AttachmentViewSet.as_view({"post": "create"})
 attachment_detail = AttachmentViewSet.as_view({"get": "retrieve", "delete": "destroy"})
 
 urlpatterns = [
+    path("issues/", issue_collection_slash, name="issue-list-slash"),
     path("", include(router.urls)),
     # Comment routes nested under issues
     path(

@@ -6,6 +6,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.workspace_scope import resolve_workspace_id
+
 from .models import ChatMessage, ChatSession
 from .serializers import (
     ChatMessageSerializer,
@@ -26,9 +28,12 @@ class ChatSessionViewSet(
     permission_classes = [IsAuthenticated]
     lookup_url_kwarg = "session_id"
 
+    def get_workspace_id(self):
+        return resolve_workspace_id(self.request)
+
     def get_queryset(self):
         return ChatSession.objects.filter(
-            workspace_id=self.request.workspace_id,
+            workspace_id=self.get_workspace_id(),
         ).order_by("-updated_at")
 
     def get_serializer_class(self):
@@ -72,7 +77,7 @@ class ChatSessionViewSet(
         from agents.models import Task
 
         pending = Task.objects.filter(
-            agent__workspace_id=request.workspace_id,
+            agent__workspace_id=self.get_workspace_id(),
             status__in=(Task.Status.QUEUED, Task.Status.DISPATCHED, Task.Status.RUNNING),
         ).order_by("-created_at")[:50]
         return Response(
@@ -97,10 +102,14 @@ class ChatMessageViewSet(
     permission_classes = [IsAuthenticated]
     lookup_url_kwarg = "message_id"
 
+    def get_workspace_id(self):
+        return resolve_workspace_id(self.request)
+
     def get_queryset(self):
         session_id = self.kwargs.get("session_id")
         return ChatMessage.objects.filter(
             session_id=session_id,
+            session__workspace_id=self.get_workspace_id(),
         ).order_by("created_at")
 
     def get_serializer_class(self):
@@ -110,7 +119,7 @@ class ChatMessageViewSet(
 
     def create(self, request, session_id=None):
         session = get_object_or_404(
-            ChatSession.objects.filter(workspace_id=request.workspace_id),
+            ChatSession.objects.filter(workspace_id=self.get_workspace_id()),
             id=session_id,
         )
         serializer = self.get_serializer(

@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from autopilots.models import Autopilot, AutopilotRun, AutopilotTrigger
+from autopilots.models import Autopilot, AutopilotTrigger
 
 pytestmark = pytest.mark.django_db
 
@@ -48,13 +48,13 @@ class TestAutopilotViewSet:
         assert len(response.data["results"]) == 1
         assert response.data["results"][0]["title"] == "Test Autopilot"
 
-    def test_create_autopilot(self, api_client, workspace, agent):
+    def test_create_autopilot(self, api_client, workspace, agent, user):
         url = reverse("autopilot-list")
         data = {
             "title": "New Autopilot",
             "assignee": str(agent.id),
             "created_by_type": "member",
-            "created_by_id": str(uuid.uuid4()),
+            "created_by_id": str(workspace.members.get(user=user).id),
         }
         response = api_client.post(
             url, data, format="json", **_ws_headers(workspace)
@@ -190,7 +190,7 @@ class TestAutopilotTriggerViewSet:
             title="Other AP",
             assignee=agent,
             created_by_type="member",
-            created_by_id=uuid.uuid4(),
+            created_by_id=workspace.members.first().id,
         )
         url = reverse(
             "autopilot-trigger-update",

@@ -6,8 +6,10 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from accounts.models import Workspace
+from accounts.models import Member, Workspace
 from inbox.models import Activity, InboxItem, Pin
+from issues.models import Issue
+from projects.models import Project
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
@@ -24,9 +26,16 @@ def user() -> User:
 
 
 @pytest.fixture
-def workspace() -> Workspace:
+def workspace(user: User) -> Workspace:
     slug = f"test-{uuid.uuid4().hex[:8]}"
-    return Workspace.objects.create(name="Test Workspace", slug=slug)
+    workspace = Workspace.objects.create(name="Test Workspace", slug=slug)
+    Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+    return workspace
+
+
+@pytest.fixture
+def member(user: User, workspace: Workspace) -> Member:
+    return Member.objects.get(workspace=workspace, user=user)
 
 
 @pytest.fixture
@@ -273,11 +282,11 @@ class TestPinModel:
 
 
 class TestInboxAPI:
-    def test_list_inbox(self, api_client, user, workspace):
+    def test_list_inbox(self, api_client, member, workspace):
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.ISSUE_ASSIGNED,
             title="Test",
         )
@@ -286,11 +295,11 @@ class TestInboxAPI:
         assert response.data["total"] == 1
         assert len(response.data["items"]) == 1
 
-    def test_list_inbox_filter_archived(self, api_client, user, workspace):
+    def test_list_inbox_filter_archived(self, api_client, member, workspace):
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.ISSUE_ASSIGNED,
             title="Active",
             archived=False,
@@ -298,7 +307,7 @@ class TestInboxAPI:
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.NEW_COMMENT,
             title="Archived",
             archived=True,
@@ -310,11 +319,11 @@ class TestInboxAPI:
         assert response.data["total"] == 1
         assert response.data["items"][0]["title"] == "Active"
 
-    def test_mark_read(self, api_client, user, workspace):
+    def test_mark_read(self, api_client, member, workspace):
         item = InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.ISSUE_ASSIGNED,
             title="Test",
         )
@@ -326,11 +335,11 @@ class TestInboxAPI:
         item.refresh_from_db()
         assert item.read is True
 
-    def test_archive_item(self, api_client, user, workspace):
+    def test_archive_item(self, api_client, member, workspace):
         item = InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.ISSUE_ASSIGNED,
             title="Test",
         )
@@ -342,12 +351,12 @@ class TestInboxAPI:
         item.refresh_from_db()
         assert item.archived is True
 
-    def test_mark_all_read(self, api_client, user, workspace):
+    def test_mark_all_read(self, api_client, member, workspace):
         for i in range(3):
             InboxItem.objects.create(
                 workspace=workspace,
                 recipient_type="member",
-                recipient_id=user.id,
+                recipient_id=member.id,
                 type=InboxItem.Type.ISSUE_ASSIGNED,
                 title=f"Test {i}",
             )
@@ -358,12 +367,12 @@ class TestInboxAPI:
         assert response.status_code == 200
         assert response.data["updated"] == 3
 
-    def test_archive_all(self, api_client, user, workspace):
+    def test_archive_all(self, api_client, member, workspace):
         for i in range(2):
             InboxItem.objects.create(
                 workspace=workspace,
                 recipient_type="member",
-                recipient_id=user.id,
+                recipient_id=member.id,
                 type=InboxItem.Type.ISSUE_ASSIGNED,
                 title=f"Test {i}",
             )
@@ -374,11 +383,11 @@ class TestInboxAPI:
         assert response.status_code == 200
         assert response.data["updated"] == 2
 
-    def test_archive_all_read(self, api_client, user, workspace):
+    def test_archive_all_read(self, api_client, member, workspace):
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.ISSUE_ASSIGNED,
             title="Read",
             read=True,
@@ -386,7 +395,7 @@ class TestInboxAPI:
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.NEW_COMMENT,
             title="Unread",
             read=False,
@@ -398,18 +407,18 @@ class TestInboxAPI:
         assert response.status_code == 200
         assert response.data["updated"] == 1
 
-    def test_archive_completed(self, api_client, user, workspace):
+    def test_archive_completed(self, api_client, member, workspace):
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.TASK_COMPLETED,
             title="Completed",
         )
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.ISSUE_ASSIGNED,
             title="Other",
         )
@@ -420,25 +429,25 @@ class TestInboxAPI:
         assert response.status_code == 200
         assert response.data["updated"] == 1
 
-    def test_unread_count(self, api_client, user, workspace):
+    def test_unread_count(self, api_client, member, workspace):
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.ISSUE_ASSIGNED,
             title="Unread 1",
         )
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.NEW_COMMENT,
             title="Unread 2",
         )
         InboxItem.objects.create(
             workspace=workspace,
             recipient_type="member",
-            recipient_id=user.id,
+            recipient_id=member.id,
             type=InboxItem.Type.STATUS_CHANGED,
             title="Read",
             read=True,
@@ -521,7 +530,8 @@ class TestPinAPI:
         assert len(response.data) == 1
 
     def test_create_pin(self, api_client, user, workspace):
-        item_id = uuid.uuid4()
+        item = Issue.objects.create(workspace=workspace, title="Pinned", creator_type="member", creator_id=user.id)
+        item_id = item.id
         response = api_client.post(
             "/api/pins",
             {"item_type": "issue", "item_id": str(item_id)},
@@ -533,7 +543,8 @@ class TestPinAPI:
         assert response.data["item_id"] == str(item_id)
 
     def test_create_duplicate_pin_returns_existing(self, api_client, user, workspace):
-        item_id = uuid.uuid4()
+        item = Issue.objects.create(workspace=workspace, title="Pinned", creator_type="member", creator_id=user.id)
+        item_id = item.id
         pin = Pin.objects.create(
             workspace=workspace,
             item_type=Pin.ItemType.ISSUE,
@@ -550,7 +561,8 @@ class TestPinAPI:
         assert response.data["id"] == str(pin.id)
 
     def test_unpin(self, api_client, user, workspace):
-        item_id = uuid.uuid4()
+        item = Issue.objects.create(workspace=workspace, title="Pinned", creator_type="member", creator_id=user.id)
+        item_id = item.id
         Pin.objects.create(
             workspace=workspace,
             item_type=Pin.ItemType.ISSUE,
@@ -565,8 +577,8 @@ class TestPinAPI:
         assert Pin.objects.filter(item_id=item_id, pinned_by=user).exists() is False
 
     def test_reorder_pins(self, api_client, user, workspace):
-        item_a = uuid.uuid4()
-        item_b = uuid.uuid4()
+        item_a = Issue.objects.create(workspace=workspace, title="Pinned", creator_type="member", creator_id=user.id).id
+        item_b = Project.objects.create(workspace=workspace, title="Pinned Project").id
         Pin.objects.create(
             workspace=workspace,
             item_type=Pin.ItemType.ISSUE,

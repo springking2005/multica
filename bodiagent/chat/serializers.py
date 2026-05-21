@@ -2,6 +2,8 @@
 
 from rest_framework import serializers
 
+from accounts.workspace_scope import resolve_workspace_id, resolve_workspace_member, validate_issue_id
+
 from .models import ChatMessage, ChatSession
 
 
@@ -49,11 +51,24 @@ class CreateChatSessionSerializer(serializers.ModelSerializer):
             "context",
         )
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        workspace_id = resolve_workspace_id(request)
+        agent = attrs.get("agent")
+        if agent and agent.workspace_id != workspace_id:
+            raise serializers.ValidationError({"agent": "Agent must belong to the workspace."})
+        issue = attrs.get("issue")
+        if issue:
+            validate_issue_id(issue.id, workspace_id, field_name="issue")
+        return attrs
+
     def create(self, validated_data):
         request = self.context.get("request")
-        validated_data["workspace_id"] = request.workspace_id
+        workspace_id = resolve_workspace_id(request)
+        member = resolve_workspace_member(request, workspace_id)
+        validated_data["workspace_id"] = workspace_id
         validated_data["creator_type"] = ChatSession.CREATOR_MEMBER
-        validated_data["creator_id"] = request.user.id
+        validated_data["creator_id"] = member.id
         return super().create(validated_data)
 
 
