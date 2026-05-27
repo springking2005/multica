@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import Daemon, DaemonToken, DaemonWorkspaceBinding, Member, Workspace
@@ -327,6 +328,7 @@ def test_daemon_register_with_stale_token_rejects_new_machine_id():
 
 
 @pytest.mark.django_db
+@override_settings(BODIAGENT_ALLOW_ANONYMOUS_DAEMON_REGISTER=True)
 def test_daemon_first_register_allows_missing_token():
     client = APIClient()
     response = client.post(
@@ -338,3 +340,126 @@ def test_daemon_first_register_allows_missing_token():
     assert response.status_code == 201, response.data
     assert response.data["token"].startswith("mdt_")
     assert Daemon.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_daemon_first_register_requires_setup_unless_explicitly_allowed():
+    client = APIClient()
+    response = client.post(
+        "/api/daemon/register",
+        {"machine_id": str(uuid.uuid4()), "device_name": "anonymous"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert Daemon.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_daemon_setup_registers_binds_and_returns_daemon_token(django_user_model):
+    user = django_user_model.objects.create_user(email="daemon-setup@example.com", name="Owner")
+    workspace = Workspace.objects.create(name="Daemon Setup WS", slug="daemon-setup-ws")
+    Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    machine_id = uuid.uuid4()
+    response = client.post(
+        "/api/daemons/setup/",
+        {
+            "workspace_id": str(workspace.id),
+            "machine_id": str(machine_id),
+            "device_name": "local-dev",
+            "providers": ["claude"],
+        },
+        format="json",
+        HTTP_X_WORKSPACE_ID=str(workspace.id),
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["token"].startswith("mdt_")
+    daemon = Daemon.objects.get(machine_id=machine_id)
+    assert daemon.available_providers == ["claude"]
+    assert DaemonWorkspaceBinding.objects.filter(daemon=daemon, workspace=workspace, revoked_at__isnull=True).exists()
+
+    list_response = client.get("/api/daemons/", HTTP_X_WORKSPACE_ID=str(workspace.id))
+    if isinstance(list_response.data, dict):
+        items = list_response.data.get("results", list_response.data)
+    else:
+        items = list_response.data
+    assert str(daemon.id) in {item["id"] for item in items}
+
+
+@pytest.mark.django_db
+def test_daemon_bind_accepts_user_auth_plus_daemon_token_body(django_user_model):
+    user = django_user_model.objects.create_user(email="daemon-bind@example.com", name="Owner")
+    workspace = Workspace.objects.create(name="Daemon Bind WS", slug="daemon-bind-ws")
+    Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+    daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="claimable")
+    _token, raw = DaemonToken.issue(daemon)
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post(
+        "/api/daemons/bind/",
+        {"daemon_token": raw},
+        format="json",
+        HTTP_X_WORKSPACE_ID=str(workspace.id),
+    )
+
+    assert response.status_code == 201, response.data
+    assert DaemonWorkspaceBinding.objects.filter(daemon=daemon, workspace=workspace, revoked_at__isnull=True).exists()
+
+
+@pytest.mark.django_db
+def test_daemon_bind_rejects_mismatched_daemon_token_claims(django_user_model):
+    user = django_user_model.objects.create_user(email="daemon-bind-mismatch@example.com", name="Owner")
+    workspace = Workspace.objects.create(name="Daemon Bind Mismatch WS", slug="daemon-bind-mismatch-ws")
+    Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+    daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="body")
+    other_daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="header")
+    _token, raw = DaemonToken.issue(daemon)
+    _other_token, other_raw = DaemonToken.issue(other_daemon)
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post(
+        "/api/daemons/bind/",
+        {"daemon_token": raw},
+        format="json",
+        HTTP_X_WORKSPACE_ID=str(workspace.id),
+        HTTP_X_DAEMON_TOKEN=other_raw,
+    )
+
+    assert response.status_code == 400
+    assert not DaemonWorkspaceBinding.objects.filter(daemon=daemon, workspace=workspace).exists()
+    assert not DaemonWorkspaceBinding.objects.filter(daemon=other_daemon, workspace=workspace).exists()
+
+
+@pytest.mark.django_db
+def test_daemon_setup_rejects_machine_bound_to_unauthorized_workspace(django_user_model):
+    owner = django_user_model.objects.create_user(email="daemon-owner-a@example.com", name="Owner A")
+    other_owner = django_user_model.objects.create_user(email="daemon-owner-b@example.com", name="Owner B")
+    workspace = Workspace.objects.create(name="Daemon Setup A", slug="daemon-setup-a")
+    other_workspace = Workspace.objects.create(name="Daemon Setup B", slug="daemon-setup-b")
+    Member.objects.create(workspace=workspace, user=owner, role=Member.ROLE_OWNER)
+    Member.objects.create(workspace=other_workspace, user=other_owner, role=Member.ROLE_OWNER)
+    daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="other-bound")
+    DaemonWorkspaceBinding.objects.create(daemon=daemon, workspace=other_workspace, created_by=other_owner)
+
+    client = APIClient()
+    client.force_authenticate(user=owner)
+    response = client.post(
+        "/api/daemons/setup/",
+        {
+            "workspace_id": str(workspace.id),
+            "machine_id": str(daemon.machine_id),
+            "device_name": "local-dev",
+            "providers": ["claude"],
+        },
+        format="json",
+        HTTP_X_WORKSPACE_ID=str(workspace.id),
+    )
+
+    assert response.status_code == 403
+    assert not DaemonWorkspaceBinding.objects.filter(daemon=daemon, workspace=workspace).exists()

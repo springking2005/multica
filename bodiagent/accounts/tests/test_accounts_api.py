@@ -4,7 +4,6 @@ from rest_framework.test import APIClient
 
 from accounts.models import Invitation, Member, PersonalAccessToken, Workspace
 
-
 pytestmark = pytest.mark.django_db
 
 
@@ -90,3 +89,31 @@ def test_cli_token_endpoint_issues_cli_prefixed_token():
     assert response.status_code == 200
     assert response.data["token"].startswith("cli_")
     assert PersonalAccessToken.objects.get(id=response.data["id"]).token_prefix.startswith("cli_")
+
+
+def test_cli_token_authenticates_workspace_api():
+    user = get_user_model().objects.create_user(email="cli-api@example.com", name="CLI API")
+    workspace = Workspace.objects.create(name="CLI WS", slug="cli-ws")
+    Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+    _token, raw = PersonalAccessToken.issue(user, "CLI", prefix="cli_")
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {raw}")
+    response = client.get("/api/workspaces/")
+
+    assert response.status_code == 200, response.data
+    items = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+    assert any(item["id"] == str(workspace.id) for item in items)
+
+
+def test_revoked_cli_token_is_rejected():
+    user = get_user_model().objects.create_user(email="cli-revoked@example.com", name="CLI Revoked")
+    token, raw = PersonalAccessToken.issue(user, "CLI", prefix="cli_")
+    token.revoked = True
+    token.save(update_fields=["revoked"])
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {raw}")
+    response = client.get("/api/workspaces/")
+
+    assert response.status_code == 401

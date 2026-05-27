@@ -351,6 +351,11 @@ class DaemonRegisterSerializer(serializers.Serializer):
             token, raw = DaemonToken.issue(daemon)
             return {"daemon": daemon, "token": raw}
 
+        if not getattr(settings, "BODIAGENT_ALLOW_ANONYMOUS_DAEMON_REGISTER", settings.DEBUG):
+            raise serializers.ValidationError(
+                {"authorization": "Use authenticated daemon setup or an existing daemon token."}
+            )
+
         daemon = Daemon.objects.create(
             machine_id=machine_id,
             device_name=validated_data.get("device_name", ""),
@@ -359,6 +364,19 @@ class DaemonRegisterSerializer(serializers.Serializer):
         )
         token, raw = DaemonToken.issue(daemon)
         return {"daemon": daemon, "token": raw}
+
+
+class DaemonSetupSerializer(serializers.Serializer):
+    workspace_id = serializers.UUIDField()
+    machine_id = serializers.UUIDField()
+    device_name = serializers.CharField(required=False, allow_blank=True, default="")
+    providers = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list, source="available_providers"
+    )
+
+
+class DaemonBindSerializer(serializers.Serializer):
+    daemon_token = serializers.CharField(required=False, allow_blank=False)
 
 
 class DaemonHeartbeatSerializer(serializers.Serializer):

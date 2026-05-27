@@ -118,3 +118,13 @@ def test_projects_with_workspace_renders_project_creation_action(authenticated_c
     actions = page_actions(body)
     assert "新建项目" in actions
     assert 'onclick="openProjectForm()"' in actions
+
+
+def test_agents_page_renders_daemon_setup_guidance(authenticated_client):
+    response = authenticated_client.get("/agents/")
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "bodiagent-daemon setup --server-url" in body
+    assert "--token <cli_or_pat_token>" in body
+    assert "cli_/pat_ 是 setup 用的用户 API token" in body

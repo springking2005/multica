@@ -10,7 +10,7 @@ from django.conf import settings
 from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY, get_user_model
 from django.db.models import Max
 
-from accounts.models import Daemon, Member, PersonalAccessToken, Workspace
+from accounts.models import Daemon, DaemonWorkspaceBinding, Member, PersonalAccessToken, Workspace
 from agents.models import Agent
 from autopilots.models import Autopilot, AutopilotTrigger
 from chat.models import ChatSession
@@ -49,6 +49,7 @@ def create_agent(workspace: Workspace, name: str = "E2E Agent") -> Agent:
         device_name=f"daemon-{uuid4().hex[:6]}",
         available_providers=["claude"],
     )
+    DaemonWorkspaceBinding.objects.create(daemon=daemon, workspace=workspace)
     return Agent.objects.create(
         workspace=workspace,
         daemon=daemon,
@@ -134,7 +135,7 @@ def create_inbox_item(
     return InboxItem.objects.create(
         workspace=workspace,
         recipient_type=InboxItem.RecipientType.MEMBER,
-        recipient_id=member.user_id,
+        recipient_id=member.id,
         actor_type=InboxItem.ActorType.SYSTEM,
         actor_id=None,
         type=inbox_type,

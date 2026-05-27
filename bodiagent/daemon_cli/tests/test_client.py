@@ -129,3 +129,62 @@ async def test_runtime_http_calls_send_daemon_bearer_header():
 
     assert seen
     assert all(request.headers.get("authorization") == "Bearer mdt_daemon_token" for request in seen)
+
+@pytest.mark.asyncio
+async def test_setup_daemon_uses_user_auth_and_returns_token():
+    seen = {}
+    daemon_id = str(uuid.uuid4())
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["authorization"] = request.headers.get("authorization")
+        seen["body"] = request.content
+        return httpx.Response(201, json={"daemon": {"id": daemon_id}, "token": "mdt_new"})
+
+    client = DaemonClient("http://server.test", "", uuid.uuid4())
+    client._http = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="http://server.test",
+    )
+
+    try:
+        result = await client.setup_daemon("cli_user", str(uuid.uuid4()), "host", ["claude"])
+    finally:
+        await client.close()
+
+    assert seen["path"] == "/api/daemons/setup/"
+    assert seen["authorization"] == "Bearer cli_user"
+    assert b'"providers":["claude"]' in seen["body"]
+    assert result["token"] == "mdt_new"
+    assert client.daemon_id == daemon_id
+
+
+@pytest.mark.asyncio
+async def test_bind_daemon_uses_user_auth_and_separate_daemon_token():
+    seen = {}
+    workspace_id = str(uuid.uuid4())
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["authorization"] = request.headers.get("authorization")
+        seen["daemon_token_header"] = request.headers.get("x-daemon-token")
+        seen["workspace_header"] = request.headers.get("x-workspace-id")
+        seen["body"] = request.content
+        return httpx.Response(201, json={"id": str(uuid.uuid4())})
+
+    client = DaemonClient("http://server.test", "", uuid.uuid4())
+    client._http = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="http://server.test",
+    )
+
+    try:
+        await client.bind_daemon("cli_user", workspace_id, "mdt_daemon")
+    finally:
+        await client.close()
+
+    assert seen["path"] == "/api/daemons/bind/"
+    assert seen["authorization"] == "Bearer cli_user"
+    assert seen["daemon_token_header"] == "mdt_daemon"
+    assert seen["workspace_header"] == workspace_id
+    assert b'"daemon_token":"mdt_daemon"' in seen["body"]

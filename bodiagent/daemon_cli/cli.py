@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import signal
+import socket
 import sys
 from pathlib import Path
 from typing import Any
@@ -17,15 +18,15 @@ from typing import Any
 import click
 
 try:
+    from .cleanup import collect_garbage
     from .client import DaemonClient
     from .config import DaemonConfig, detect_available_clis
     from .executor import TaskExecutor
-    from .cleanup import collect_garbage
 except ImportError:
+    from cleanup import collect_garbage
     from client import DaemonClient
     from config import DaemonConfig, detect_available_clis
     from executor import TaskExecutor
-    from cleanup import collect_garbage
 
 
 @click.group()
@@ -163,50 +164,83 @@ def restart(profile: str | None) -> None:
 
 
 @main.command()
+@click.option("--server-url", default=None, help="BodiAgent server URL.")
+@click.option("--user-token", "user_token", default=None, help="User JWT/PAT/CLI token for setup.")
+@click.option("--token", "user_token_alias", default=None, help="Alias for --user-token.")
+@click.option("--workspace-id", default=None, help="Workspace UUID to bind this daemon to.")
+@click.option("--daemon-token", default=None, help="Existing daemon token (mdt_...) to save without user setup.")
 @click.option("--profile", default=None, help="Configuration profile name.")
-def setup(profile: str | None) -> None:
-    """Interactive configuration setup."""
+def setup(
+    server_url: str | None,
+    user_token: str | None,
+    user_token_alias: str | None,
+    workspace_id: str | None,
+    daemon_token: str | None,
+    profile: str | None,
+) -> None:
+    """Configure, register, and bind this machine as a workspace daemon."""
     click.echo("bodiagent-daemon setup")
     click.echo("=" * 40)
 
-    server_url = click.prompt("Server URL", default="http://localhost:8000")
-    token = click.prompt("Daemon token (mdt_...)")
-    workspace_id = click.prompt("Workspace ID (UUID)")
-
-    config = DaemonConfig(
-        server_url=server_url,
-        token=token,
-        workspace_id=workspace_id,
-    )
-    config.save(profile)
-
-    click.echo(f"\nConfiguration saved to ~/.bodiagent/config.json")
-    click.echo(f"Machine ID: {config.machine_id}")
-
-    # Test connection
-    client = DaemonClient(
-        server_url=config.server_url,
-        token=config.token,
-        machine_id=config.machine_id,
-    )
-
+    server_url = server_url or click.prompt("Server URL", default="http://localhost:8000")
     clis = detect_available_clis()
-    click.echo(f"\nDetected AI CLIs: {', '.join(clis) if clis else 'none'}")
+    click.echo(f"Detected AI CLIs: {', '.join(clis) if clis else 'none'}")
 
-    async def _test() -> None:
-        import socket
+    if daemon_token:
+        workspace_id = workspace_id or click.prompt("Workspace ID (UUID)")
+        config = DaemonConfig(server_url=server_url, token=daemon_token, workspace_id=workspace_id)
+        config.save(profile)
+        click.echo("Saved existing daemon token. The daemon must already be bound to this workspace.")
+        return
+
+    user_token = user_token or user_token_alias or click.prompt(
+        "User token (JWT, pat_..., or cli_...)", hide_input=True
+    )
+
+    bootstrap_config = DaemonConfig(server_url=server_url, token="", workspace_id=workspace_id or "")
+    client = DaemonClient(server_url=server_url, token="", machine_id=bootstrap_config.machine_id)
+
+    async def _setup() -> dict[str, Any]:
+        nonlocal workspace_id
+        if not workspace_id:
+            workspaces = await client.list_workspaces(user_token)
+            if not workspaces:
+                raise click.ClickException("No workspaces are available for this user token.")
+            if len(workspaces) == 1:
+                workspace_id = str(workspaces[0]["id"])
+                click.echo(f"Using workspace: {workspaces[0].get('name', workspace_id)} ({workspace_id})")
+            else:
+                click.echo("Available workspaces:")
+                for item in workspaces:
+                    click.echo(f"  {item.get('id')}  {item.get('name', '')}")
+                workspace_id = click.prompt("Workspace ID (UUID)")
+        return await client.setup_daemon(user_token, workspace_id, socket.gethostname(), clis)
+
+    async def _setup_with_close() -> dict[str, Any]:
         try:
-            result = await client.register(socket.gethostname(), clis)
-            click.echo(f"Registered successfully: {json.dumps(result, indent=2)}")
-        except Exception as exc:
-            click.echo(f"Warning: Server registration failed: {exc}")
+            return await _setup()
         finally:
             await client.close()
 
     try:
-        asyncio.run(_test())
-    except Exception:
-        click.echo("Connection test failed. Check server URL and token.")
+        result = asyncio.run(_setup_with_close())
+    except Exception as exc:
+        message = _format_setup_error(exc, user_token)
+        raise click.ClickException(message) from exc
+
+    raw_daemon_token = result.get("token")
+    if not raw_daemon_token:
+        raise click.ClickException("Server did not return a daemon token.")
+    config = DaemonConfig(server_url=server_url, token=raw_daemon_token, workspace_id=workspace_id or "")
+    config.available_providers = clis
+    config.save(profile)
+    daemon_id = (result.get("daemon") or {}).get("id", "")
+    click.echo("\nSetup complete.")
+    click.echo("Configuration saved to ~/.bodiagent/config.json")
+    click.echo(f"Daemon ID: {daemon_id or '(unknown)'}")
+    click.echo(f"Machine ID: {config.machine_id}")
+    click.echo(f"Workspace ID: {config.workspace_id}")
+    click.echo("Token saved: mdt_... (daemon runtime token)")
 
 
 @main.command()
@@ -294,6 +328,27 @@ def version(profile: str | None) -> None:
     click.echo(f"Machine ID: {config.machine_id}")
     clis = detect_available_clis()
     click.echo(f"Detected AI CLIs: {', '.join(clis) if clis else 'none'}")
+
+
+def _format_setup_error(exc: Exception, user_token: str) -> str:
+    import httpx
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        try:
+            detail = exc.response.json()
+        except Exception:
+            detail = exc.response.text
+        prefix = user_token[:4]
+        hint = ""
+        if status in (401, 403) and prefix == "mdt_":
+            hint = " Setup requires a user token (JWT, pat_..., or cli_...), not an mdt_ daemon token."
+        elif status in (401, 403) and prefix == "cli_":
+            hint = " The server must include CLI/PAT authentication support for cli_ tokens."
+        elif status == 403:
+            hint = " Confirm the token user is an owner/admin of the workspace."
+        return f"Server returned HTTP {status}: {detail}.{hint}"
+    return str(exc)
 
 
 def _setup_logging(verbose: bool) -> None:

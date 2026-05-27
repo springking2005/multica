@@ -170,8 +170,8 @@ def get_bearer_token(request) -> str:
     return token
 
 
-def resolve_daemon_from_request(request) -> Daemon:
-    raw_token = get_bearer_token(request)
+
+def resolve_daemon_from_token(raw_token: str) -> Daemon:
     token = (
         DaemonToken.objects.filter(token_hash=hash_token(raw_token), expires_at__gt=timezone.now())
         .select_related("daemon")
@@ -180,6 +180,25 @@ def resolve_daemon_from_request(request) -> Daemon:
     if token is None:
         raise AuthenticationFailed("Invalid daemon token.")
     return token.daemon
+
+
+def resolve_daemon_from_claim(request) -> Daemon:
+    candidates = [
+        getattr(request, "data", {}).get("daemon_token"),
+        request.headers.get("X-Daemon-Token"),
+        request.headers.get("X-BodiAgent-Daemon-Token"),
+    ]
+    tokens = [str(token).strip() for token in candidates if token]
+    if not tokens:
+        raise NotAuthenticated("daemon_token or X-Daemon-Token is required.")
+    if len(set(tokens)) > 1:
+        raise ValidationError({"daemon_token": "Daemon token claims must match when provided in multiple places."})
+    return resolve_daemon_from_token(tokens[0])
+
+
+def resolve_daemon_from_request(request) -> Daemon:
+    raw_token = get_bearer_token(request)
+    return resolve_daemon_from_token(raw_token)
 
 
 def validate_request_daemon_id(request, daemon: Daemon, field_name: str = "daemon_id") -> None:

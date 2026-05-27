@@ -1,10 +1,8 @@
 """Tests for config module."""
 
 import json
-from pathlib import Path
 
-import pytest
-
+import daemon_cli.config as config_module
 from daemon_cli.config import DaemonConfig, detect_available_clis
 
 
@@ -64,3 +62,29 @@ class TestDetectAvailableClis:
     def test_returns_list(self):
         clis = detect_available_clis()
         assert isinstance(clis, list)
+
+
+
+def test_load_reads_profile_config(tmp_path, monkeypatch):
+    config_dir = tmp_path / ".bodiagent"
+    profile_dir = config_dir / "profiles" / "staging"
+    profile_dir.mkdir(parents=True)
+    (profile_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "server_url": "https://staging.example.com",
+                "token": "mdt_staging",
+                "workspace_id": "workspace-staging",
+                "workspaces_root": str(tmp_path / "workspaces"),
+            }
+        )
+    )
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_DIR", config_dir)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_FILE", config_dir / "config.json")
+    monkeypatch.setattr(config_module, "DEFAULT_WORKSPACES_ROOT", config_dir / "workspaces")
+
+    config = DaemonConfig.load("staging")
+
+    assert config.server_url == "https://staging.example.com"
+    assert config.token == "mdt_staging"
+    assert config.workspace_id == "workspace-staging"

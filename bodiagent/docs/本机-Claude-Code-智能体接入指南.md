@@ -133,7 +133,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -e ./daemon_cli
 ```
 
-> 注意：`bodiagent-daemon` 的命令入口定义在 `bodiagent/daemon_cli/pyproject.toml`。如果只在 `bodiagent/` 根目录执行 `python3 -m pip install -e .`，可能不会安装 `bodiagent-daemon` 命令。
+> 建议直接安装 `./daemon_cli` 独立包。当前 `bodiagent/` 根包也提供 `bodiagent-daemon` 入口用于兼容，但独立包更贴近 daemon 发布形态。
 
 验证 daemon 命令：
 
@@ -167,7 +167,7 @@ echo "$PATH"
 
 ---
 
-## 5. 在 Web 端准备 Token 和 Workspace ID
+## 5. 在 Web 端准备用户 Token 和 Workspace ID
 
 浏览器打开：
 
@@ -177,10 +177,10 @@ http://106.53.153.76:8000
 
 登录系统后，准备以下两个值：
 
-1. Token
-2. Workspace ID
+1. **用户 API token**：JWT、`pat_...` 或 `cli_...`。推荐在 Web 端生成 `cli_...`。
+2. **Workspace ID**：目标工作区 UUID。浏览器切换工作区下拉框里的 `option value` 就是 workspace id。
 
-### 5.1 生成 Token
+### 5.1 生成 CLI Token
 
 进入：
 
@@ -188,18 +188,18 @@ http://106.53.153.76:8000
 设置 → CLI Token
 ```
 
-点击生成 Token，复制显示出来的 token。
+点击生成 Token，复制显示出来的 `cli_...` token。
 
-> 注意：Token 只显示一次，请立即保存。
+> 注意：Token 只显示一次，请立即保存。`cli_...`/`pat_...` 是用户 API token，用于 daemon setup、列出工作区和授权绑定；`mdt_...` 是 daemon 运行时 token，不要拿 `mdt_...` 去做 setup 的用户认证。
 
 ### 5.2 获取 Workspace ID
 
-如果页面能显示工作区 ID，直接复制。
+如果页面能显示工作区 ID，直接复制。浏览器切换工作区选项里的 `option value` 是 workspace id。
 
-如果需要通过 API 获取，可在登录状态下使用 token 查询：
+也可以通过 API 获取：
 
 ```bash
-curl -H "Authorization: Bearer <你的token>" \
+curl -H "Authorization: Bearer <cli_or_pat_token>" \
   http://106.53.153.76:8000/api/workspaces/
 ```
 
@@ -209,7 +209,18 @@ curl -H "Authorization: Bearer <你的token>" \
 
 ## 6. 配置本机 daemon
 
-执行交互式配置：
+推荐使用新的闭环 setup：CLI 用用户 token 调用服务端 `/api/daemons/setup/`，服务端会创建/复用 daemon、绑定到 workspace，并返回 `mdt_...` daemon 运行时 token；CLI 会自动保存该 `mdt_...`。
+
+```bash
+bodiagent-daemon setup \
+  --server-url http://106.53.153.76:8000 \
+  --token <cli_or_pat_token> \
+  --workspace-id <workspace_uuid>
+```
+
+也可以不传 `--workspace-id`，如果该 token 只属于一个工作区，setup 会自动选择；如果属于多个工作区，会列出可选工作区并提示输入。
+
+交互式方式：
 
 ```bash
 bodiagent-daemon setup
@@ -219,8 +230,18 @@ bodiagent-daemon setup
 
 ```text
 Server URL: http://106.53.153.76:8000
-Daemon token: <刚才生成或拿到的 token>
-Workspace ID: <目标 workspace UUID>
+User token (JWT, pat_..., or cli_...): <cli_or_pat_token>
+Workspace ID (UUID): <目标 workspace UUID>
+```
+
+成功后会看到类似输出：
+
+```text
+Setup complete.
+Daemon ID: ...
+Machine ID: ...
+Workspace ID: ...
+Token saved: mdt_... (daemon runtime token)
 ```
 
 配置会保存到：
@@ -229,23 +250,13 @@ Workspace ID: <目标 workspace UUID>
 ~/.bodiagent/config.json
 ```
 
-也可以手动写入配置：
+也可以手动写入配置，但只建议在你已经有**已绑定该工作区**的 `mdt_...` token 时使用：
 
 ```bash
-mkdir -p ~/.bodiagent
-
-cat > ~/.bodiagent/config.json <<'JSON'
-{
-  "server_url": "http://106.53.153.76:8000",
-  "token": "替换成你的 token",
-  "workspace_id": "替换成 workspace UUID",
-  "workspaces_root": "/home/YOUR_USER/.bodiagent/workspaces",
-  "max_concurrent_tasks": 20,
-  "gc_interval_seconds": 3600,
-  "gc_ttl_hours": 24,
-  "gc_orphan_ttl_hours": 72
-}
-JSON
+bodiagent-daemon setup \
+  --server-url http://106.53.153.76:8000 \
+  --daemon-token <mdt_daemon_token> \
+  --workspace-id <workspace_uuid>
 ```
 
 检查配置：
@@ -273,20 +284,7 @@ Detected AI CLIs: claude
 bodiagent-daemon start --foreground --verbose
 ```
 
-正常情况下会看到类似输出：
-
-```text
-Starting bodiagent-daemon (server=http://106.53.153.76:8000)
-Available providers: claude
-Registered: {
-  "id": "...",
-  "machine_id": "...",
-  "available_providers": ["claude"],
-  "token": "mdt_..."
-}
-```
-
-如果首次注册返回新的 `mdt_...` daemon token，建议后续把 `~/.bodiagent/config.json` 里的 `token` 更新为该 `mdt_...`，因为它是 daemon 专用 token。
+正常情况下会看到 daemon 注册成功、WebSocket/轮询启动、任务执行器开始运行等日志。setup 阶段已经保存了 `mdt_...` daemon 运行时 token，启动阶段无需再手动复制 token。
 
 ---
 
@@ -432,7 +430,9 @@ bodiagent-daemon status
 重点确认：
 
 - `server_url` 是否是 `http://106.53.153.76:8000`；
-- token 是否正确；
+- setup 要使用用户 token（JWT、`pat_...` 或 `cli_...`），不要把 `mdt_...` 填到 `--token`；
+- 当前用户是否是该 workspace 的 owner/admin；
+- daemon 是否已经通过 `/api/daemons/setup/` 或 `bodiagent-daemon setup` 绑定到目标 workspace；
 - 网络是否能访问服务端。
 
 ---
@@ -486,10 +486,10 @@ python3 -m pip install -U pip
 python3 -m pip install -e ./daemon_cli
 
 # 3. 配置 daemon
-bodiagent-daemon setup
-# Server URL: http://106.53.153.76:8000
-# Token: <token>
-# Workspace ID: <workspace uuid>
+bodiagent-daemon setup \
+  --server-url http://106.53.153.76:8000 \
+  --token <cli_or_pat_token> \
+  --workspace-id <workspace uuid>
 
 # 4. 启动
 bodiagent-daemon start --foreground --verbose

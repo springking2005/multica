@@ -68,6 +68,10 @@ class DaemonClient:
     def _auth_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"}
 
+    @staticmethod
+    def auth_headers_for(token: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {token}"}
+
     # ------------------------------------------------------------------
     # HTTP endpoints
     # ------------------------------------------------------------------
@@ -88,6 +92,55 @@ class DaemonClient:
         if data.get("id"):
             self.daemon_id = str(data["id"])
         return data
+
+
+    async def list_workspaces(self, user_token: str) -> list[dict[str, Any]]:
+        """GET /api/workspaces/ using a user JWT/PAT/CLI token."""
+        resp = await self.http.get("/api/workspaces/", headers=self.auth_headers_for(user_token))
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and "results" in data:
+            return list(data["results"] or [])
+        return list(data or [])
+
+    async def setup_daemon(
+        self,
+        user_token: str,
+        workspace_id: str,
+        device_name: str,
+        providers: list[str],
+    ) -> dict[str, Any]:
+        """POST /api/daemons/setup with user auth; returns daemon token."""
+        resp = await self.http.post(
+            "/api/daemons/setup/",
+            json={
+                "workspace_id": workspace_id,
+                "machine_id": str(self.machine_id),
+                "device_name": device_name,
+                "providers": providers,
+            },
+            headers=self.auth_headers_for(user_token),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        daemon = data.get("daemon") or {}
+        if daemon.get("id"):
+            self.daemon_id = str(daemon["id"])
+        return data
+
+    async def bind_daemon(self, user_token: str, workspace_id: str, daemon_token: str) -> dict[str, Any]:
+        """POST /api/daemons/bind with user auth and daemon token in body."""
+        resp = await self.http.post(
+            "/api/daemons/bind/",
+            json={"daemon_token": daemon_token},
+            headers={
+                **self.auth_headers_for(user_token),
+                "X-Daemon-Token": daemon_token,
+                "X-Workspace-ID": workspace_id,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     async def deregister(self) -> None:
         """POST /api/daemon/deregister"""

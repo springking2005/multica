@@ -3,11 +3,12 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login as auth_login
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,6 +16,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     Daemon,
+    DaemonToken,
     Invitation,
     Member,
     PersonalAccessToken,
@@ -25,9 +27,11 @@ from .serializers import (
     AuthResponseSerializer,
     CreateInvitationSerializer,
     CreateTokenSerializer,
+    DaemonBindSerializer,
     DaemonHeartbeatSerializer,
     DaemonRegisterSerializer,
     DaemonSerializer,
+    DaemonSetupSerializer,
     DaemonWorkspaceBindingSerializer,
     InvitationSerializer,
     LoginSerializer,
@@ -44,7 +48,7 @@ from .serializers import (
 from .workspace_scope import (
     bind_daemon_to_workspace,
     require_workspace_admin,
-    resolve_daemon_from_request,
+    resolve_daemon_from_claim,
     resolve_workspace_id,
 )
 
@@ -502,9 +506,53 @@ class DaemonViewSet(viewsets.ReadOnlyModelViewSet):
     def bind(self, request):
         workspace_id = resolve_workspace_id(request)
         require_workspace_admin(request, workspace_id)
-        daemon = resolve_daemon_from_request(request)
+        serializer = DaemonBindSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        daemon = resolve_daemon_from_claim(request)
         binding = bind_daemon_to_workspace(daemon, workspace_id, created_by=request.user)
         return Response(DaemonWorkspaceBindingSerializer(binding).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["post"], url_path="setup")
+    def setup(self, request):
+        serializer = DaemonSetupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        workspace_id = serializer.validated_data["workspace_id"]
+        require_workspace_admin(request, workspace_id)
+        machine_id = serializer.validated_data["machine_id"]
+        defaults = {
+            "device_name": serializer.validated_data.get("device_name", ""),
+            "available_providers": serializer.validated_data.get("available_providers", []),
+            "last_heartbeat": timezone.now(),
+        }
+        with transaction.atomic():
+            daemon, created = Daemon.objects.select_for_update().get_or_create(
+                machine_id=machine_id,
+                defaults=defaults,
+            )
+            unauthorized_binding_exists = (
+                daemon.workspace_bindings.filter(revoked_at__isnull=True)
+                .exclude(
+                    workspace__members__user=request.user,
+                    workspace__members__role__in=(Member.ROLE_OWNER, Member.ROLE_ADMIN),
+                )
+                .exists()
+            )
+            if unauthorized_binding_exists:
+                raise PermissionDenied("Existing daemon is bound to another workspace.")
+            if not created:
+                for field, value in defaults.items():
+                    setattr(daemon, field, value)
+                daemon.save(update_fields=["device_name", "available_providers", "last_heartbeat", "updated_at"])
+            binding = bind_daemon_to_workspace(daemon, workspace_id, created_by=request.user)
+            _token, raw = DaemonToken.issue(daemon)
+        return Response(
+            {
+                "daemon": DaemonSerializer(daemon).data,
+                "binding": DaemonWorkspaceBindingSerializer(binding).data,
+                "token": raw,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PATViewSet(

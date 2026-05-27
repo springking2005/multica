@@ -297,13 +297,18 @@ function renderAgentLoading() {
 
 
 function renderAgentPrerequisiteEmpty() {
+  var setupCommand = 'bodiagent-daemon setup --server-url ' + window.location.origin +
+    ' --token <cli_or_pat_token> --workspace-id ' + agentWorkspaceId;
   document.getElementById('agent-surface').innerHTML = '<div class="ba-empty-state">' +
     '<div class="ba-empty-state-icon">⚙</div>' +
     '<div class="ba-empty-state-title">需要先连接 Daemon</div>' +
-    '<div class="ba-empty-state-body">创建智能体前需要可用 Daemon/运行时，并在设置中配置对应提供商令牌。</div>' +
+    '<div class="ba-empty-state-body">创建智能体前，需要在本机用用户 token 完成 daemon 注册和工作区绑定。' +
+      'setup 成功后这里会显示该工作区已绑定的 daemon。</div>' +
+    '<pre class="mt-3 overflow-x-auto rounded-lg bg-gray-950 p-3 text-left text-xs text-gray-100"><code>' + escapeHtml(setupCommand) + '</code></pre>' +
+    '<div class="ba-empty-state-body mt-2">cli_/pat_ 是 setup 用的用户 API token；mdt_ 是 daemon 运行时 token，会由 setup 自动保存。</div>' +
     '<div class="mt-3 flex flex-wrap justify-center gap-2">' +
       '<button type="button" class="ba-button ba-button--secondary" disabled title="没有可用 Daemon">创建智能体不可用</button>' +
-      '<a class="ba-button ba-button--primary" href="/settings/tokens/">检查令牌设置</a>' +
+      '<a class="ba-button ba-button--primary" href="/settings/tokens/">生成 CLI Token</a>' +
     '</div></div>';
 }
 
