@@ -257,8 +257,28 @@
     opts.credentials = 'same-origin';
     var response = await fetch(url, opts);
     var text = await response.text();
-    var data = text ? JSON.parse(text) : null;
-    if (!response.ok) throw new Error(formatApiError(data) || ('HTTP ' + response.status));
+    var contentType = response.headers.get('content-type') || '';
+    var data = null;
+    if (text && contentType.indexOf('application/json') !== -1) {
+      try {
+        data = JSON.parse(text);
+      } catch (error) {
+        throw new Error('服务器返回了无效 JSON（HTTP ' + response.status + '）。');
+      }
+    }
+    if (response.redirected && text && !data) {
+      throw new Error('登录状态或权限已失效，请刷新页面后重新登录。');
+    }
+    if (!response.ok) {
+      if (data) throw new Error(formatApiError(data) || ('HTTP ' + response.status));
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('登录状态或权限已失效，请刷新页面后重新登录。');
+      }
+      throw new Error('服务器返回了非 JSON 响应（HTTP ' + response.status + '），请稍后重试或查看服务端日志。');
+    }
+    if (text && !data) {
+      throw new Error('服务器返回了非 JSON 响应（HTTP ' + response.status + '）。');
+    }
     return data;
   }
 

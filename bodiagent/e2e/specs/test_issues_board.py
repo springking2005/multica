@@ -40,6 +40,7 @@ def test_issues_board_mobile_smoke(page, live_server, browser_user):
 
 @pytest.mark.django_db(transaction=True)
 def test_issues_board_quick_create_creates_card_and_opens_detail(page, live_server, browser_user):
+    create_issue(browser_user.workspace, browser_user.member, title="Existing numbered issue")
     page.goto(live_server.url + "/issues/?quick_create=1")
 
     expect(page.locator("#issue-create-dialog")).to_be_visible(timeout=10_000)

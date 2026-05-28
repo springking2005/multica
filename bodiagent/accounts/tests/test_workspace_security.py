@@ -463,3 +463,70 @@ def test_daemon_setup_rejects_machine_bound_to_unauthorized_workspace(django_use
 
     assert response.status_code == 403
     assert not DaemonWorkspaceBinding.objects.filter(daemon=daemon, workspace=workspace).exists()
+
+
+@pytest.mark.django_db
+def test_issue_create_assigns_incrementing_workspace_numbers(django_user_model):
+    user = django_user_model.objects.create_user(email="issue-create@example.com", name="Issue Creator")
+    workspace = Workspace.objects.create(name="Issue Create", slug="issue-create")
+    member = Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+    Issue.objects.create(
+        workspace=workspace,
+        number=1,
+        title="Existing issue",
+        creator_type="member",
+        creator_id=member.id,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    first = client.post(
+        "/api/issues",
+        {"title": "Created through API", "status": "todo", "priority": "medium"},
+        format="json",
+        HTTP_X_WORKSPACE_ID=str(workspace.id),
+    )
+    second = client.post(
+        "/api/issues",
+        {"title": "Second through API", "status": "backlog", "priority": "low"},
+        format="json",
+        HTTP_X_WORKSPACE_ID=str(workspace.id),
+    )
+
+    assert first.status_code == 201, first.data
+    assert second.status_code == 201, second.data
+    workspace.refresh_from_db()
+    assert first.data["number"] == 2
+    assert second.data["number"] == 3
+    assert workspace.issue_counter == 3
+    assert Issue.objects.filter(workspace=workspace).count() == 3
+
+
+@pytest.mark.django_db
+def test_issue_create_numbers_are_workspace_scoped(django_user_model):
+    user = django_user_model.objects.create_user(email="issue-scope@example.com", name="Issue Scope")
+    workspace_a = Workspace.objects.create(name="Issue Scope A", slug="issue-scope-a")
+    workspace_b = Workspace.objects.create(name="Issue Scope B", slug="issue-scope-b")
+    member_a = Member.objects.create(workspace=workspace_a, user=user, role=Member.ROLE_OWNER)
+    Member.objects.create(workspace=workspace_b, user=user, role=Member.ROLE_OWNER)
+    Issue.objects.create(
+        workspace=workspace_a,
+        number=9,
+        title="Existing A",
+        creator_type="member",
+        creator_id=member_a.id,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post(
+        "/api/issues",
+        {"title": "Created in B"},
+        format="json",
+        HTTP_X_WORKSPACE_ID=str(workspace_b.id),
+    )
+
+    workspace_b.refresh_from_db()
+    assert response.status_code == 201, response.data
+    assert response.data["number"] == 1
+    assert workspace_b.issue_counter == 1

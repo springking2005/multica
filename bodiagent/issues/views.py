@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import Q, QuerySet
+from django.db.models import Max, Q, QuerySet
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from accounts.models import Workspace
 from accounts.workspace_scope import (
     resolve_workspace_id,
     resolve_workspace_member,
@@ -89,11 +90,21 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         workspace_id = self.get_workspace_id()
         member = resolve_workspace_member(self.request, workspace_id)
         self._validate_issue_refs(serializer.validated_data)
-        serializer.save(
-            workspace_id=workspace_id,
-            creator_type="member",
-            creator_id=member.id,
-        )
+        with transaction.atomic():
+            workspace = Workspace.objects.select_for_update().get(id=workspace_id)
+            max_existing_number = (
+                Issue.objects.filter(workspace_id=workspace_id).aggregate(max_number=Max("number"))["max_number"]
+                or 0
+            )
+            next_number = max(workspace.issue_counter, max_existing_number) + 1
+            workspace.issue_counter = next_number
+            workspace.save(update_fields=["issue_counter", "updated_at"])
+            serializer.save(
+                workspace_id=workspace_id,
+                number=next_number,
+                creator_type="member",
+                creator_id=member.id,
+            )
 
     def list(self, request: Request, *args, **kwargs) -> Response:
         queryset = self.get_queryset()
