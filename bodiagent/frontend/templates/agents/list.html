@@ -227,7 +227,7 @@ function renderAgents() {
   var surface = document.getElementById('agent-surface');
   var visible = filteredAgents();
   updateAgentCount(visible.length, agentState.agents.length);
-  if (!agentState.daemons.length) {
+  if (!agentState.agents.length && !agentState.daemons.length) {
     renderAgentPrerequisiteEmpty();
     return;
   }
@@ -239,7 +239,8 @@ function renderAgents() {
     renderAgentEmpty('没有匹配的智能体', '调整搜索、状态或排序条件后重试。', false);
     return;
   }
-  surface.innerHTML = '<div class="ba-table-wrap">' +
+  var warning = !agentState.daemons.length ? renderDaemonMissingNotice() : '';
+  surface.innerHTML = warning + '<div class="ba-table-wrap">' +
     '<table class="ba-table" aria-label="智能体列表"><thead><tr>' +
       '<th>智能体</th><th>运行时</th><th>状态</th><th>并发</th><th>任务</th><th>更新时间</th><th class="text-right">操作</th>' +
     '</tr></thead><tbody>' + visible.map(renderAgentRow).join('') + '</tbody></table></div>';
@@ -296,9 +297,18 @@ function renderAgentLoading() {
 }
 
 
-function renderAgentPrerequisiteEmpty() {
-  var setupCommand = 'bodiagent-daemon setup --server-url ' + window.location.origin +
+function daemonSetupCommand() {
+  return 'bodiagent-daemon setup --server-url ' + window.location.origin +
     ' --token <cli_or_pat_token> --workspace-id ' + agentWorkspaceId;
+}
+
+function renderDaemonMissingNotice() {
+  return '<div class="ba-alert ba-alert--info mb-3" role="status">当前工作区没有可用 Daemon，已有智能体仍会显示；新建或运行任务前请先完成本机 daemon setup。' +
+    '<pre class="mt-2 overflow-x-auto rounded-lg bg-gray-950 p-3 text-left text-xs text-gray-100"><code>' + escapeHtml(daemonSetupCommand()) + '</code></pre></div>';
+}
+
+function renderAgentPrerequisiteEmpty() {
+  var setupCommand = daemonSetupCommand();
   document.getElementById('agent-surface').innerHTML = '<div class="ba-empty-state">' +
     '<div class="ba-empty-state-icon">⚙</div>' +
     '<div class="ba-empty-state-title">需要先连接 Daemon</div>' +

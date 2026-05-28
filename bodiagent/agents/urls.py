@@ -29,7 +29,10 @@ router.register("tasks", TaskViewSet, basename="task")
 router.register("task-usage", TaskUsageViewSet, basename="task-usage")
 router.register("task-usage-daily", TaskUsageDailyViewSet, basename="task-usage-daily")
 
+agent_collection_slash = AgentViewSet.as_view({"get": "list", "post": "create"})
+
 urlpatterns = [
+    path("agents/", agent_collection_slash, name="agent-list-slash"),
     path("", include(router.urls)),
     # Daemon control plane
     path(

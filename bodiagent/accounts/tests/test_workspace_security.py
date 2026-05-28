@@ -91,6 +91,40 @@ def test_agent_create_rejects_unbound_daemon(django_user_model):
 
 
 @pytest.mark.django_db
+def test_agent_collection_accepts_trailing_slash_for_list_and_create(django_user_model):
+    user = django_user_model.objects.create_user(email="agent-slash@example.com", name="Owner")
+    workspace = Workspace.objects.create(name="Agent Slash WS", slug="agent-slash-ws")
+    Member.objects.create(workspace=workspace, user=user, role=Member.ROLE_OWNER)
+    daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="slash-daemon")
+    DaemonWorkspaceBinding.objects.create(daemon=daemon, workspace=workspace, created_by=user)
+    Agent.objects.create(workspace=workspace, daemon=daemon, name="Existing Bot", provider="claude")
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    headers = {"HTTP_X_WORKSPACE_ID": str(workspace.id)}
+
+    no_slash = client.get("/api/agents", **headers)
+    with_slash = client.get("/api/agents/", **headers)
+    create_response = client.post(
+        "/api/agents/",
+        {
+            "name": "Slash Bot",
+            "provider": "claude",
+            "model": "claude",
+            "daemon_id": str(daemon.id),
+        },
+        format="json",
+        **headers,
+    )
+
+    assert no_slash.status_code == 200, no_slash.data
+    assert with_slash.status_code == 200, with_slash.data
+    assert create_response.status_code == 201, create_response.data
+    assert create_response.data["name"] == "Slash Bot"
+    assert Agent.objects.filter(workspace=workspace, name="Slash Bot").exists()
+
+
+@pytest.mark.django_db
 def test_existing_daemon_register_requires_existing_token():
     daemon = Daemon.objects.create(machine_id=uuid.uuid4(), device_name="existing")
     _token, raw = DaemonToken.issue(daemon)

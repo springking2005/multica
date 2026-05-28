@@ -18,6 +18,22 @@ def test_agents_page_lists_seeded_agent(page, live_server, browser_user):
     assert_no_raw_json_page(page)
     assert_no_console_errors(page.console_errors)
 
+
+@pytest.mark.django_db(transaction=True)
+def test_agents_page_lists_existing_agent_when_daemon_binding_is_missing(page, live_server, browser_user):
+    agent = create_agent(browser_user.workspace, "Orphaned Browser Agent")
+    agent.daemon.workspace_bindings.all().delete()
+
+    page.goto(live_server.url + "/agents/")
+
+    expect(page.get_by_role("heading", name="智能体")).to_be_visible()
+    expect(page.locator("#agent-surface")).to_contain_text("Orphaned Browser Agent", timeout=10_000)
+    expect(page.locator("#agent-surface")).to_contain_text("当前工作区没有可用 Daemon", timeout=10_000)
+    expect(page.locator("#agent-surface")).to_contain_text("Daemon: 未绑定", timeout=10_000)
+    assert_no_raw_json_page(page)
+    assert_no_console_errors(page.console_errors)
+
+
 @pytest.mark.django_db(transaction=True)
 def test_agents_create_dialog_validation_stays_on_page(page, live_server, browser_user):
     page.goto(live_server.url + "/agents/")
