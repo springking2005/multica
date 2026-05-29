@@ -24,6 +24,8 @@ router.register("issues", IssueViewSet, basename="issue")
 router.register("labels", IssueLabelViewSet, basename="issuelabel")
 
 issue_collection_slash = IssueViewSet.as_view({"get": "list", "post": "create"})
+issue_task_cancel = IssueViewSet.as_view({"post": "cancel_issue_task"})
+issue_task_messages = IssueViewSet.as_view({"get": "issue_task_messages"})
 
 comment_list = CommentViewSet.as_view({"get": "list", "post": "create"})
 comment_detail = CommentViewSet.as_view(
@@ -38,6 +40,16 @@ attachment_detail = AttachmentViewSet.as_view({"get": "retrieve", "delete": "des
 urlpatterns = [
     path("issues/", issue_collection_slash, name="issue-list-slash"),
     path("", include(router.urls)),
+    path(
+        "issues/<uuid:issue_id>/tasks/<uuid:task_id>/cancel",
+        issue_task_cancel,
+        name="issue-task-cancel",
+    ),
+    path(
+        "issues/<uuid:issue_id>/tasks/<uuid:task_id>/messages",
+        issue_task_messages,
+        name="issue-task-messages",
+    ),
     # Comment routes nested under issues
     path(
         "issues/<uuid:issue_id>/comments",

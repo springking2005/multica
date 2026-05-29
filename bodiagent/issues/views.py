@@ -22,6 +22,17 @@ from accounts.workspace_scope import (
     validate_issue_id,
     validate_project_id,
 )
+from agents.models import Task
+from agents.serializers import TaskMessageSerializer, TaskSerializer
+from agents.services import (
+    ACTIVE_TASK_STATUSES,
+    cancel_active_tasks_for_issue,
+    enqueue_issue_assignment_task,
+    enqueue_issue_comment_task,
+    enqueue_issue_mention_tasks,
+    reconcile_issue_task_state,
+    rerun_issue_task,
+)
 
 from .models import (
     Attachment,
@@ -99,12 +110,13 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
             next_number = max(workspace.issue_counter, max_existing_number) + 1
             workspace.issue_counter = next_number
             workspace.save(update_fields=["issue_counter", "updated_at"])
-            serializer.save(
+            issue = serializer.save(
                 workspace_id=workspace_id,
                 number=next_number,
                 creator_type="member",
                 creator_id=member.id,
             )
+            enqueue_issue_assignment_task(issue)
 
     def list(self, request: Request, *args, **kwargs) -> Response:
         queryset = self.get_queryset()
@@ -160,7 +172,17 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer: IssueSerializer) -> None:
         self._validate_issue_refs(serializer.validated_data)
-        serializer.save()
+        with transaction.atomic():
+            old_assignee_type = serializer.instance.assignee_type
+            old_assignee_id = serializer.instance.assignee_id
+            old_status = serializer.instance.status
+            issue = serializer.save()
+            reconcile_issue_task_state(
+                issue,
+                old_assignee_type=old_assignee_type,
+                old_assignee_id=old_assignee_id,
+                old_status=old_status,
+            )
 
     def update(self, request: Request, *args, **kwargs) -> Response:
         kwargs["partial"] = True
@@ -168,6 +190,7 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
 
     def destroy(self, request: Request, *args, **kwargs) -> Response:
         instance = self.get_object()
+        cancel_active_tasks_for_issue(instance, reason="Issue was deleted.")
         instance.delete()
         return Response({"ok": True})
 
@@ -187,9 +210,9 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         update_fields = {}
 
         for key, value in data.items():
-            if value is not None:
+            if value is not None or key in request.data:
                 update_fields[key] = value
-        if project_id is not None:
+        if project_id is not None or "project_id" in request.data:
             update_fields["project_id"] = project_id
 
         if not update_fields:
@@ -198,9 +221,24 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        updated = Issue.objects.filter(
-            id__in=ids, workspace_id=workspace_id
-        ).update(**update_fields)
+        with transaction.atomic():
+            queryset = Issue.objects.filter(id__in=ids, workspace_id=workspace_id)
+            previous_state = {
+                issue.id: (issue.assignee_type, issue.assignee_id, issue.status)
+                for issue in queryset.only("id", "assignee_type", "assignee_id", "status")
+            }
+            updated = queryset.update(**update_fields)
+            for issue in Issue.objects.filter(id__in=ids, workspace_id=workspace_id):
+                old_assignee_type, old_assignee_id, old_status = previous_state.get(
+                    issue.id,
+                    (None, None, None),
+                )
+                reconcile_issue_task_state(
+                    issue,
+                    old_assignee_type=old_assignee_type,
+                    old_assignee_id=old_assignee_id,
+                    old_status=old_status,
+                )
         return Response({"updated": updated})
 
     @action(detail=False, methods=["post"], url_path="reorder")
@@ -222,6 +260,48 @@ class IssueViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
                     updated += 1
 
         return Response({"updated": updated})
+
+
+    @action(detail=True, methods=["get"], url_path="active-task")
+    def active_task(self, request: Request, issue_id: UUID = None) -> Response:
+        issue = self.get_object()
+        tasks = Task.objects.filter(issue=issue, status__in=ACTIVE_TASK_STATUSES).order_by("-created_at")
+        return Response({"tasks": TaskSerializer(tasks, many=True).data})
+
+    @action(detail=True, methods=["get"], url_path="task-runs")
+    def task_runs(self, request: Request, issue_id: UUID = None) -> Response:
+        issue = self.get_object()
+        tasks = Task.objects.filter(issue=issue).order_by("-created_at")
+        return Response(TaskSerializer(tasks, many=True).data)
+
+    @action(detail=True, methods=["post"], url_path="rerun")
+    def rerun(self, request: Request, issue_id: UUID = None) -> Response:
+        issue = self.get_object()
+        task = rerun_issue_task(issue)
+        return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
+
+    def cancel_issue_task(self, request: Request, issue_id: UUID = None, task_id: UUID = None) -> Response:
+        issue = self.get_object()
+        try:
+            task = Task.objects.get(id=task_id, issue=issue, agent__workspace_id=self.get_workspace_id())
+        except Task.DoesNotExist as exc:
+            raise Http404("Task not found") from exc
+        if task.status not in ACTIVE_TASK_STATUSES:
+            raise ValidationError({"status": "Only active tasks can be cancelled."})
+        task.status = Task.Status.CANCELLED
+        task.completed_at = timezone.now()
+        task.failure_reason = "Cancelled from issue detail."
+        task.save(update_fields=["status", "completed_at", "failure_reason", "updated_at"])
+        return Response(TaskSerializer(task).data)
+
+    def issue_task_messages(self, request: Request, issue_id: UUID = None, task_id: UUID = None) -> Response:
+        issue = self.get_object()
+        try:
+            task = Task.objects.get(id=task_id, issue=issue, agent__workspace_id=self.get_workspace_id())
+        except Task.DoesNotExist as exc:
+            raise Http404("Task not found") from exc
+        messages = task.messages.order_by("seq")
+        return Response(TaskMessageSerializer(messages, many=True).data)
 
     @action(detail=True, methods=["get"], url_path="children")
     def children(self, request: Request, issue_id: UUID = None) -> Response:
@@ -354,12 +434,14 @@ class CommentViewSet(WorkspaceScopedMixin, viewsets.ModelViewSet):
         if parent and (parent.workspace_id != workspace_id or parent.issue_id != issue.id):
             raise ValidationError({"parent": "Parent comment must belong to the same issue and workspace."})
         member = resolve_workspace_member(self.request, workspace_id)
-        serializer.save(
+        comment = serializer.save(
             issue=issue,
             workspace_id=workspace_id,
             author_type="member",
             author_id=member.id,
         )
+        enqueue_issue_comment_task(issue, comment)
+        enqueue_issue_mention_tasks(issue, comment)
 
     def destroy(self, request: Request, *args, **kwargs) -> Response:
         instance = self.get_object()

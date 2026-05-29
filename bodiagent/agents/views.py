@@ -55,6 +55,7 @@ from .serializers import (
     TaskSerializer,
     TaskUsageSerializer,
 )
+from .services import complete_task_with_result
 
 
 class WorkspaceScopedMixin:
@@ -305,21 +306,13 @@ class TaskViewSet(WorkspaceScopedMixin, mixins.RetrieveModelMixin, viewsets.Gene
 
     @action(detail=True, methods=["post"])
     def complete(self, request, task_id=None):
-        task = self.get_object()
-        serializer = TaskCompleteSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        task.status = Task.Status.COMPLETED
-        task.result = serializer.validated_data.get("result", {})
-        task.branch_name = serializer.validated_data.get("branch_name", "")
-        task.completed_at = timezone.now()
-        task.save(
-            update_fields=["status", "result", "branch_name", "completed_at", "updated_at"]
-        )
-        return Response(TaskSerializer(task).data)
+        raise ValidationError({"detail": "Tasks can only be completed by the bound daemon."})
 
     @action(detail=True, methods=["post"])
     def fail(self, request, task_id=None):
         task = self.get_object()
+        if task.status not in (Task.Status.DISPATCHED, Task.Status.RUNNING):
+            raise ValidationError({"status": "Only dispatched or running tasks can be failed."})
         serializer = TaskFailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         task.status = Task.Status.FAILED
@@ -344,16 +337,14 @@ class TaskViewSet(WorkspaceScopedMixin, mixins.RetrieveModelMixin, viewsets.Gene
         task.save(update_fields=["status", "completed_at", "updated_at"])
         return Response(TaskSerializer(task).data)
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get", "post"])
     def messages(self, request, task_id=None):
         task = self.get_object()
-        queryset = TaskMessage.objects.filter(task=task).order_by("seq")
-        serializer = TaskMessageSerializer(queryset, many=True)
-        return Response(serializer.data)
+        if request.method == "GET":
+            queryset = TaskMessage.objects.filter(task=task).order_by("seq")
+            serializer = TaskMessageSerializer(queryset, many=True)
+            return Response(serializer.data)
 
-    @action(detail=True, methods=["post"], url_path="messages")
-    def post_messages(self, request, task_id=None):
-        task = self.get_object()
         serializer = TaskMessageBatchSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         last_seq = (
@@ -469,15 +460,17 @@ class DaemonTaskLifecycleView(viewsets.ViewSet):
         task = self.get_task(request, task_id)
         serializer = TaskCompleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        task.status = Task.Status.COMPLETED
-        task.result = serializer.validated_data.get("result", {})
-        task.branch_name = serializer.validated_data.get("branch_name", "")
-        task.completed_at = timezone.now()
-        task.save(update_fields=["status", "result", "branch_name", "completed_at", "updated_at"])
+        complete_task_with_result(
+            task,
+            result=serializer.validated_data.get("result", {}),
+            branch_name=serializer.validated_data.get("branch_name", ""),
+        )
         return Response(TaskSerializer(task).data)
 
     def post_fail(self, request, task_id: UUID):
         task = self.get_task(request, task_id)
+        if task.status not in (Task.Status.DISPATCHED, Task.Status.RUNNING):
+            raise ValidationError({"status": "Only dispatched or running tasks can be failed."})
         serializer = TaskFailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         task.status = Task.Status.FAILED

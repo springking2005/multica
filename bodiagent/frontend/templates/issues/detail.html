@@ -63,6 +63,26 @@
       </section>
 
       <section class="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900">智能体执行</h2>
+            <p class="mt-1 text-xs text-gray-500">查看当前任务、历史执行、消息流；必要时可取消或重跑。</p>
+          </div>
+          <button type="button" id="task-rerun-button" class="rounded-md border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400" disabled>重跑当前 Issue</button>
+        </div>
+        <div class="grid gap-4 px-5 py-4 lg:grid-cols-2">
+          <div>
+            <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">当前任务</h3>
+            <div id="active-tasks-list" class="space-y-2 text-sm text-gray-700">任务加载中...</div>
+          </div>
+          <div>
+            <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">执行历史</h3>
+            <div id="task-runs-list" class="max-h-96 space-y-2 overflow-y-auto text-sm text-gray-700">历史加载中...</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-lg border border-gray-200 bg-white shadow-sm">
         <div class="border-b border-gray-100 px-5 py-4">
           <h2 class="text-sm font-semibold text-gray-900">评论</h2>
         </div>
@@ -203,7 +223,7 @@
   var issueId = root.dataset.issueId;
   var workspaceId = root.dataset.workspaceId || '';
   var csrfToken = root.dataset.csrf || (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  var state = { issue: null, comments: [], activities: [], members: [], agents: [], projects: [], labels: [], children: [], dependencies: [] };
+  var state = { issue: null, comments: [], activities: [], members: [], agents: [], projects: [], labels: [], children: [], dependencies: [], activeTasks: [], taskRuns: [], taskMessagesById: {} };
 
   var els = {
     alert: document.getElementById('issue-alert'),
@@ -221,6 +241,9 @@
     commentSubmit: document.getElementById('comment-submit'),
     commentError: document.getElementById('comment-error'),
     activities: document.getElementById('activity-list'),
+    activeTasks: document.getElementById('active-tasks-list'),
+    taskRuns: document.getElementById('task-runs-list'),
+    taskRerun: document.getElementById('task-rerun-button'),
     statusSelect: document.getElementById('issue-status-select'),
     prioritySelect: document.getElementById('issue-priority-select'),
     assigneeType: document.getElementById('issue-assignee-type'),
@@ -243,6 +266,7 @@
     backlog: '待规划', todo: '待处理', in_progress: '进行中', in_review: '审查中', done: '已完成', blocked: '阻塞', cancelled: '已取消'
   };
   var priorityLabels = { none: '无', urgent: '紧急', high: '高', medium: '中', low: '低' };
+  var taskStatusLabels = { queued: '排队中', dispatched: '已派发', running: '运行中', completed: '已完成', failed: '失败', cancelled: '已取消' };
 
   function headers(hasBody) {
     var result = { 'Accept': 'application/json', 'X-CSRFToken': csrfToken };
@@ -349,7 +373,7 @@
   }
 
   function setControlsEnabled(enabled) {
-    [els.titleInput, els.descriptionInput, els.statusSelect, els.prioritySelect, els.assigneeType, els.assigneeId, els.assigneeSave, els.projectId, els.projectSave, els.dueDate, els.labelAdd, els.deleteButton].forEach(function(el) {
+    [els.titleInput, els.descriptionInput, els.statusSelect, els.prioritySelect, els.assigneeType, els.assigneeId, els.assigneeSave, els.projectId, els.projectSave, els.dueDate, els.labelAdd, els.deleteButton, els.taskRerun].forEach(function(el) {
       if (el) el.disabled = !enabled;
     });
     updateDirtyButtons();
@@ -383,6 +407,7 @@
     renderLabels(issue.labels || []);
     setControlsEnabled(true);
     renderLabelOptions();
+    renderTasks();
   }
 
   function renderLabels(labels) {
@@ -474,6 +499,68 @@
     }).join('');
   }
 
+
+  function renderTaskMessage(message) {
+    var fallback = JSON.stringify(message.output || message.metadata || {});
+    return '<div class="rounded bg-white p-2 text-xs text-gray-700">' +
+      '<span class="font-medium">' + escapeHtml(message.type || 'text') + '#' +
+      escapeHtml(message.seq || '') + '：</span>' +
+      escapeHtml(message.content || fallback) +
+    '</div>';
+  }
+
+  function renderTaskMessages(messages) {
+    if (!messages) return '';
+    if (!messages.length) {
+      return '<div class="mt-3 border-t border-gray-100 pt-2 text-xs text-gray-400">暂无消息</div>';
+    }
+    return '<div class="mt-3 space-y-1 border-t border-gray-100 pt-2">' +
+      messages.map(renderTaskMessage).join('') +
+    '</div>';
+  }
+
+  function renderTaskCard(task, active) {
+    var messages = state.taskMessagesById[task.id] || null;
+    var summary = task.result && task.result.summary ? String(task.result.summary) : '';
+    var meta = '#' + escapeHtml(task.issue_number || '--') + ' · ' +
+      escapeHtml(taskStatusLabels[task.status] || task.status || '未知') + ' · ' +
+      escapeHtml(formatDate(task.created_at));
+    var actions = '<button type="button" class="rounded border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-white" data-task-messages="' +
+      escapeHtml(task.id) + '">消息</button>';
+    if (active) {
+      actions += '<button type="button" class="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-white" data-task-cancel="' +
+        escapeHtml(task.id) + '">取消</button>';
+    }
+    return '<article class="rounded-md border border-gray-100 bg-gray-50 p-3">' +
+      '<div class="flex flex-wrap items-start justify-between gap-2">' +
+        '<div class="min-w-0">' +
+          '<div class="font-medium text-gray-900">' + escapeHtml(task.issue_title || 'Issue 任务') + '</div>' +
+          '<div class="mt-1 text-xs text-gray-500">' + meta + '</div>' +
+          (task.trigger_summary ? '<div class="mt-2 text-xs text-gray-600">触发：' + escapeHtml(task.trigger_summary) + '</div>' : '') +
+          (summary ? '<div class="mt-2 rounded bg-white p-2 text-xs text-gray-700">结果：' + escapeHtml(summary) + '</div>' : '') +
+          (task.branch_name ? '<div class="mt-1 text-xs text-gray-500">分支：' + escapeHtml(task.branch_name) + '</div>' : '') +
+          (task.work_dir ? '<div class="mt-1 text-xs text-gray-500">目录：' + escapeHtml(task.work_dir) + '</div>' : '') +
+        '</div>' +
+        '<div class="flex shrink-0 gap-2">' + actions + '</div>' +
+      '</div>' +
+      renderTaskMessages(messages) +
+    '</article>';
+  }
+
+  function renderTasks() {
+    els.taskRerun.disabled = !state.issue || state.issue.assignee_type !== 'agent' || ['done', 'cancelled'].indexOf(state.issue.status) !== -1;
+    if (!state.activeTasks.length) {
+      els.activeTasks.innerHTML = '<div class="rounded-md border border-dashed border-gray-200 p-4 text-center text-gray-400">暂无运行中的智能体任务</div>';
+    } else {
+      els.activeTasks.innerHTML = state.activeTasks.map(function(task) { return renderTaskCard(task, true); }).join('');
+    }
+    if (!state.taskRuns.length) {
+      els.taskRuns.innerHTML = '<div class="rounded-md border border-dashed border-gray-200 p-4 text-center text-gray-400">暂无执行历史</div>';
+    } else {
+      els.taskRuns.innerHTML = state.taskRuns.map(function(task) { return renderTaskCard(task, false); }).join('');
+    }
+  }
+
   async function loadIssue() {
     var issue = await apiJson('/api/issues/' + issueId);
     renderIssue(issue);
@@ -504,6 +591,16 @@
     renderDependencies();
   }
 
+  async function loadTasks() {
+    var results = await Promise.all([
+      apiJson('/api/issues/' + issueId + '/active-task'),
+      apiJson('/api/issues/' + issueId + '/task-runs')
+    ]);
+    state.activeTasks = normalizeList(results[0].tasks || results[0]);
+    state.taskRuns = normalizeList(results[1]);
+    renderTasks();
+  }
+
   async function loadActivities() {
     try {
       var data = await apiJson('/api/activities?issue_id=' + encodeURIComponent(issueId) + '&limit=20');
@@ -520,6 +617,7 @@
     renderIssue(issue);
     setSaveState('已保存', 'success');
     loadActivities();
+    loadTasks();
   }
 
   els.titleInput.addEventListener('input', updateDirtyButtons);
@@ -591,6 +689,53 @@
     }
   });
 
+  els.taskRerun.addEventListener('click', async function() {
+    try {
+      els.taskRerun.disabled = true;
+      await apiJson('/api/issues/' + issueId + '/rerun', { method: 'POST', body: JSON.stringify({}) });
+      await loadTasks();
+      setSaveState('已创建重跑任务', 'success');
+    } catch (error) {
+      setSaveState('重跑失败：' + error.message, 'error');
+      renderTasks();
+    }
+  });
+
+  els.activeTasks.addEventListener('click', async function(event) {
+    var cancelButton = event.target.closest('[data-task-cancel]');
+    var messageButton = event.target.closest('[data-task-messages]');
+    if (cancelButton) {
+      try {
+        await apiJson(
+          '/api/issues/' + issueId + '/tasks/' + cancelButton.dataset.taskCancel + '/cancel',
+          { method: 'POST', body: JSON.stringify({}) }
+        );
+        await loadTasks();
+        setSaveState('任务已取消', 'success');
+      } catch (error) {
+        setSaveState('取消任务失败：' + error.message, 'error');
+      }
+    } else if (messageButton) {
+      await loadTaskMessages(messageButton.dataset.taskMessages).catch(function(error) {
+        setSaveState('消息加载失败：' + error.message, 'error');
+      });
+    }
+  });
+
+  els.taskRuns.addEventListener('click', function(event) {
+    var button = event.target.closest('[data-task-messages]');
+    if (!button) return;
+    loadTaskMessages(button.dataset.taskMessages).catch(function(error) {
+      setSaveState('消息加载失败：' + error.message, 'error');
+    });
+  });
+
+  async function loadTaskMessages(taskId) {
+    var data = await apiJson('/api/issues/' + issueId + '/tasks/' + taskId + '/messages');
+    state.taskMessagesById[taskId] = normalizeList(data);
+    renderTasks();
+  }
+
   els.deleteButton.addEventListener('click', async function() {
     if (!confirm('确定删除该 Issue 吗？')) return;
     try {
@@ -619,6 +764,7 @@
       els.commentContent.value = '';
       setSaveState('评论已发布', 'success');
       loadActivities();
+      loadTasks();
     } catch (error) {
       els.commentError.textContent = '评论发布失败：' + error.message;
       els.commentError.classList.remove('hidden');
@@ -632,7 +778,7 @@
   }
 
   setControlsEnabled(false);
-  Promise.all([loadDependencies(), loadIssue(), loadComments(), loadActivities()]).catch(function(error) {
+  Promise.all([loadDependencies(), loadIssue(), loadComments(), loadActivities(), loadTasks()]).catch(function(error) {
     setAlert('Issue 加载失败：' + error.message, 'error');
     setControlsEnabled(false);
   });
