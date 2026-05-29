@@ -67,6 +67,46 @@ def test_prod_asgi_wraps_http_app_with_static_handler(monkeypatch):
     assert result.stdout.strip() == "ASGIStaticFilesHandler"
 
 
+def test_prod_disables_persistent_db_connections_by_default(monkeypatch):
+    settings = _reload_prod_settings(monkeypatch)
+
+    assert settings.DATABASES["default"]["CONN_MAX_AGE"] == 0
+
+
+def test_prod_allows_explicit_persistent_db_connections(monkeypatch):
+    settings = _reload_prod_settings(monkeypatch, DB_CONN_MAX_AGE="30")
+
+    assert settings.DATABASES["default"]["CONN_MAX_AGE"] == 30
+
+
+def test_docker_runtime_exposes_connection_pressure_knobs():
+    dockerfile = Path("Dockerfile").read_text()
+    compose = Path("docker-compose.yml").read_text()
+    env_example = Path(".env.example").read_text()
+
+    assert "${WEB_CONCURRENCY:-2}" in dockerfile
+    assert "DB_CONN_MAX_AGE: ${DB_CONN_MAX_AGE:-0}" in compose
+    assert "WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}" in compose
+    assert "DB_CONN_MAX_AGE=0" in env_example
+    assert "WEB_CONCURRENCY=2" in env_example
+
+
+def test_dockerfile_installs_server_dependencies_before_source_copy():
+    dockerfile = Path("Dockerfile").read_text()
+
+    assert dockerfile.index("COPY pyproject.toml ./") < dockerfile.index("COPY . .")
+    assert "pip install --no-cache-dir -r /tmp/requirements.txt" in dockerfile
+    assert "pip install --no-cache-dir --no-build-isolation --no-deps ." in dockerfile
+
+
+def test_daemon_dockerfile_installs_dependencies_before_source_copy():
+    dockerfile = Path("Dockerfile.daemon").read_text()
+
+    assert dockerfile.index("COPY daemon_cli/pyproject.toml") < dockerfile.index("COPY daemon_cli /app/daemon_cli")
+    assert "pip install --no-cache-dir -r /tmp/daemon-requirements.txt" in dockerfile
+    assert "pip install --no-cache-dir --no-build-isolation --no-deps -e /app/daemon_cli" in dockerfile
+
+
 def test_env_example_does_not_pin_secure_cookie_flags():
     env_example = Path(".env.example").read_text()
 

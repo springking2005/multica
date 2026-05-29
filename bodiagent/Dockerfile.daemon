@@ -11,10 +11,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git openssh-client && \
     rm -rf /var/lib/apt/lists/*
 
+COPY daemon_cli/pyproject.toml /app/daemon_cli/pyproject.toml
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && python -c 'import tomllib; data = tomllib.load(open("/app/daemon_cli/pyproject.toml", "rb")); deps = data["project"]["dependencies"]; open("/tmp/daemon-requirements.txt", "w").write("\n".join(deps) + "\n")' \
+    && pip install --no-cache-dir -r /tmp/daemon-requirements.txt
+
 COPY daemon_cli /app/daemon_cli
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -e /app/daemon_cli \
+RUN pip install --no-cache-dir --no-build-isolation --no-deps -e /app/daemon_cli \
     && addgroup --system bodiagent \
     && adduser --system --ingroup bodiagent --home /home/bodiagent bodiagent \
     && mkdir -p /home/bodiagent/.bodiagent/workspaces \

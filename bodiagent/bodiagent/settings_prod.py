@@ -36,8 +36,14 @@ STATIC_ROOT = os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles")
 MEDIA_ROOT = os.environ.get("MEDIA_ROOT", BASE_DIR / "data" / "uploads")
 
 # Production DB
+# This app is served through ASGI (gunicorn + uvicorn). Django recommends
+# disabling persistent database connections in async mode; otherwise each
+# worker/thread can hold idle PostgreSQL sessions for DB_CONN_MAX_AGE seconds
+# and small self-hosted databases can hit max_connections during traffic,
+# deploys, or smoke tests. Operators that put PgBouncer / a psycopg pool in
+# front may still opt in explicitly with DB_CONN_MAX_AGE.
 DATABASES["default"].update({
-    "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "600")),
+    "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "0")),
     "OPTIONS": {"sslmode": os.environ.get("DB_SSLMODE", "prefer")},
 })
 
